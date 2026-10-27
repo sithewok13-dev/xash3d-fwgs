@@ -8,7 +8,8 @@
 #   HLSDK_GAMES  space separated branch:gamedir pairs
 #   HLSDK_OPTIONAL_GAMES  the same, built from HLSDK_OPTIONAL_REPO and left
 #                out if they fail ("" for none); default: the fork's ios-ag
-#                branch (Adrenaline Gamer and our multiplayer modes) as "ag"
+#                branch (Adrenaline Gamer and our multiplayer modes) as "ag",
+#                and ios-coop's co-op server library "hlcoop" in valve
 #   IPA_NAME     output file name in artifacts/
 
 set -e
@@ -22,7 +23,9 @@ HLSDK_GAMES=${HLSDK_GAMES:-"master:valve opfor:gearbox bshift:bshift"}
 # instead of failing the build (empty: none)
 # (from the fork, where our multiplayer modes live)
 HLSDK_OPTIONAL_REPO=${HLSDK_OPTIONAL_REPO:-https://github.com/sithewok13-dev/hlsdk-portable}
-HLSDK_OPTIONAL_GAMES=${HLSDK_OPTIONAL_GAMES-"ios-ag:ag"}
+# branch:gamedir, or branch:gamedir:lib for a server library of its own
+# in an existing game folder (its client is that game's, not rebuilt)
+HLSDK_OPTIONAL_GAMES=${HLSDK_OPTIONAL_GAMES-"ios-ag:ag ios-coop:valve:hlcoop"}
 IPA_NAME=${IPA_NAME:-Xash3D-iOS-unsigned.ipa}
 
 mkdir -p build
@@ -47,7 +50,10 @@ build_hlsdk() {
 	gamedir=$2
 	prefix=$3
 	repo=$4
+	lib=$5
 	src="$ROOT/build/hlsdk-$branch"
+	extra=""
+	[ -n "$lib" ] && extra="-DSERVER_LIBRARY_NAME=$lib -DBUILD_CLIENT=OFF"
 
 	rm -rf "$src"
 	git clone --recursive --depth 1 -b "$branch" "$repo" "$src" || return 1
@@ -61,7 +67,7 @@ build_hlsdk() {
 		-DCMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT=0 \
 		-DCMAKE_INSTALL_PREFIX="$prefix" \
 		-DGAMEDIR="$gamedir" \
-		-DCMAKE_BUILD_TYPE=Debug || return 1
+		-DCMAKE_BUILD_TYPE=Debug $extra || return 1
 	cmake --build "$src/build" --target install -j"$(sysctl -n hw.ncpu)" || return 1
 }
 
@@ -73,15 +79,16 @@ done
 
 # optional ones go to their own folder first, so a half-built one can't
 # leave pieces in the IPA
-for pair in $HLSDK_OPTIONAL_GAMES; do
-	echo "::group::hlsdk ${pair%%:*} -> ${pair##*:} (optional)"
-	staged="$ROOT/build/ios/optional-${pair##*:}"
+for entry in $HLSDK_OPTIONAL_GAMES; do
+	IFS=: read -r obranch odir olib <<< "$entry"
+	echo "::group::hlsdk $obranch -> $odir ${olib:+($olib) }(optional)"
+	staged="$ROOT/build/ios/optional-$obranch"
 	rm -rf "$staged"
-	if ( build_hlsdk "${pair%%:*}" "${pair##*:}" "$staged" "$HLSDK_OPTIONAL_REPO" ); then
+	if ( build_hlsdk "$obranch" "$odir" "$staged" "$HLSDK_OPTIONAL_REPO" "$olib" ); then
 		cp -R "$staged"/. "$LIBSDIR"/
-		echo "Optional game ${pair##*:}: built"
+		echo "Optional game $odir ${olib:+($olib) }: built"
 	else
-		echo "::warning::Optional game ${pair##*:} (hlsdk ${pair%%:*}) failed to build; left out of the IPA"
+		echo "::warning::Optional game $odir ${olib:+($olib) }(hlsdk $obranch) failed to build; left out of the IPA"
 	fi
 	echo "::endgroup::"
 done
