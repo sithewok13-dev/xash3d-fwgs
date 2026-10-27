@@ -177,6 +177,87 @@ static NSString *JoinAddresses( void )
 	return nil;
 }
 
+// ---------------------------------------------------------------- AG modes
+
+// The Multiplayer Modes card's modes. Each is a gamemode config of our own
+// (gamemodes/mm_<name>.cfg in the ag folder, written by the launcher, so
+// AG's own configs are never touched) that sets everything it depends on,
+// so one mode's settings never leak into the next.
+typedef struct
+{
+	const char *name;   // mm_<name>
+	const char *title;
+	const char *about;
+	const char *settings;
+} ag_mode_t;
+
+#define AG_NO_PICKUPS \
+	"sv_ag_ban_crowbar 1\nsv_ag_ban_glock 1\nsv_ag_ban_357 1\nsv_ag_ban_mp5 1\nsv_ag_ban_shotgun 1\n" \
+	"sv_ag_ban_crossbow 1\nsv_ag_ban_rpg 1\nsv_ag_ban_gauss 1\nsv_ag_ban_egon 1\nsv_ag_ban_hornet 1\n" \
+	"sv_ag_ban_hgrenade 1\nsv_ag_ban_satchel 1\nsv_ag_ban_tripmine 1\nsv_ag_ban_snark 1\nsv_ag_ban_m203 1\n" \
+	"sv_ag_ban_9mmar 1\nsv_ag_ban_bockshot 1\nsv_ag_ban_uranium 1\nsv_ag_ban_bolts 1\nsv_ag_ban_rockets 1\n" \
+	"sv_ag_ban_357ammo 1\n"
+#define AG_NO_START \
+	"sv_ag_start_crowbar 0\nsv_ag_start_glock 0\nsv_ag_start_9mmar 0\n"
+#define AG_TEAMS "mp_teamplay 1\nmp_teamlist \"blue;red\"\n"
+
+static const ag_mode_t ag_modes[] =
+{
+{ "ffa",      "Deathmatch",         "Everyone for themselves", "" },
+{ "tdm",      "Team Deathmatch",    "Blue against red", AG_TEAMS },
+{ "arena",    "Arena",              "One on one, the winner stays in", "sv_ag_gametype arena\n" },
+{ "lms",      "Last Man Standing",  "No respawns: the last one alive wins the round", "sv_ag_gametype lms\n" },
+{ "instagib", "Instagib",           "Tau cannons that kill in one hit", "sv_ag_gametype instagib\n" AG_NO_PICKUPS AG_NO_START
+	"sv_ag_start_gauss 1\nsv_ag_start_uranium 100\n" },
+{ "gungame",  "Gun Game",           "Each kill moves you to the next weapon; win with the crowbar", "sv_ag_gametype gungame\n" AG_NO_PICKUPS AG_NO_START },
+{ "lowgrav",  "Low Gravity",        "Deathmatch on the moon", "sv_gravity 200\n" },
+{ "crowbar",  "Crowbars Only",      "Deathmatch with crowbars", AG_NO_PICKUPS AG_NO_START "sv_ag_start_crowbar 1\n" },
+{ "snarks",   "Snarks Only",        "Deathmatch with snarks (and a crowbar)", AG_NO_PICKUPS AG_NO_START "sv_ag_start_crowbar 1\nsv_ag_start_snark 15\n" },
+{ "rockets",  "Rockets Only",       "Deathmatch with RPGs (and a crowbar)", AG_NO_PICKUPS AG_NO_START "sv_ag_start_crowbar 1\nsv_ag_start_rpg 1\nsv_ag_start_rockets 5\n" },
+{ "ctf",      "Capture the Flag",   "Needs CTF maps (agctf_...)", "sv_ag_gametype ctf\n" AG_TEAMS },
+{ "dom",      "Domination",         "Needs domination maps (agdom_...)", "sv_ag_gametype dom\n" AG_TEAMS },
+};
+
+#define NUM_AG_MODES ( sizeof( ag_modes ) / sizeof( ag_modes[0] ))
+
+// what every mode starts from: AG's defaults
+static NSString *const kAgBase =
+	@"sv_ag_gametype \"\"\n"
+	@"mp_teamplay 0\n"
+	@"sv_gravity 800\n"
+	@"mp_weaponstay 0\n"
+	@"sv_ag_ban_crowbar 0\nsv_ag_ban_glock 0\nsv_ag_ban_357 0\nsv_ag_ban_mp5 0\nsv_ag_ban_shotgun 0\n"
+	@"sv_ag_ban_crossbow 0\nsv_ag_ban_rpg 0\nsv_ag_ban_gauss 0\nsv_ag_ban_egon 0\nsv_ag_ban_hornet 0\n"
+	@"sv_ag_ban_hgrenade 0\nsv_ag_ban_satchel 0\nsv_ag_ban_tripmine 0\nsv_ag_ban_snark 0\nsv_ag_ban_m203 0\n"
+	@"sv_ag_ban_9mmar 0\nsv_ag_ban_bockshot 0\nsv_ag_ban_uranium 0\nsv_ag_ban_bolts 0\nsv_ag_ban_rockets 0\n"
+	@"sv_ag_ban_357ammo 0\n"
+	@"sv_ag_start_crowbar 1\nsv_ag_start_glock 1\nsv_ag_start_357 0\nsv_ag_start_mp5 0\nsv_ag_start_shotgun 0\n"
+	@"sv_ag_start_crossbow 0\nsv_ag_start_rpg 0\nsv_ag_start_gauss 0\nsv_ag_start_egon 0\nsv_ag_start_hornet 0\n"
+	@"sv_ag_start_hgrenade 0\nsv_ag_start_satchel 0\nsv_ag_start_tripmine 0\nsv_ag_start_snark 0\nsv_ag_start_m203 0\n"
+	@"sv_ag_start_9mmar 68\nsv_ag_start_bockshot 0\nsv_ag_start_uranium 0\nsv_ag_start_bolts 0\nsv_ag_start_rockets 0\n"
+	@"sv_ag_start_357ammo 0\nsv_ag_start_health 100\nsv_ag_start_armour 0\n";
+
+// (re)writes our mode configs into the ag folder's gamemodes
+static BOOL WriteAgModes( NSString *agdir )
+{
+	NSString *dir = FindChild( agdir, @"gamemodes" ) ?: [agdir stringByAppendingPathComponent:@"gamemodes"];
+	BOOL ok = YES;
+
+	[[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+
+	for( int i = 0; i < (int)NUM_AG_MODES; i++ )
+	{
+		const ag_mode_t *m = &ag_modes[i];
+		// AG reads the first two lines as the mode's name and description
+		NSString *text = [NSString stringWithFormat:@"// %s\n// %s\n%@%s", m->title, m->about, kAgBase, m->settings];
+		NSString *path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"mm_%s.cfg", m->name]];
+
+		ok = [text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil] && ok;
+	}
+
+	return ok;
+}
+
 // The 25th anniversary update (2023) added the hldemo chapter to valve
 static BOOL IsAnniversaryData( NSString *root )
 {
@@ -192,6 +273,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	UIStackView *cards;
 	UILabel *footer;
 	int chosen;
+	NSString *agmode; // the Multiplayer Modes card's mode, nil: just start
 }
 @end
 
@@ -353,6 +435,12 @@ static BOOL IsAnniversaryData( NSString *root )
 	const launcher_game_t *g = &games[card.tag];
 	game_state_t state = GameState( root, g );
 
+	if( state == GAME_READY && !strcmp( g->dir, "ag" ))
+	{
+		[self pickAgMode:card];
+		return;
+	}
+
 	if( state == GAME_READY )
 	{
 		chosen = (int)card.tag;
@@ -387,6 +475,49 @@ static BOOL IsAnniversaryData( NSString *root )
 		message:msg preferredStyle:UIAlertControllerStyleAlert];
 	[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
 	[self presentViewController:alert animated:YES completion:nil];
+}
+
+// Multiplayer Modes: which mode to host, or just start (to join a game)
+- (void)pickAgMode:(UIButton *)card
+{
+	int index = (int)card.tag;
+	UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Multiplayer Modes"
+		message:@"Pick a mode, then Multiplayer › Create game to host it. To join a friend's game, the mode is theirs."
+		preferredStyle:UIAlertControllerStyleActionSheet];
+
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Join a game" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+		chosen = index;
+	}]];
+
+	for( int i = 0; i < (int)NUM_AG_MODES; i++ )
+	{
+		const ag_mode_t *m = &ag_modes[i];
+
+		[sheet addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"%s — %s", m->title, m->about]
+			style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+			NSString *agdir = GameFolder( root, &games[index] );
+
+			if( !agdir || !WriteAgModes( agdir ))
+			{
+				UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Couldn't set up the modes"
+					message:@"The modes' settings couldn't be written into the \"ag\" folder." preferredStyle:UIAlertControllerStyleAlert];
+				[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+				[self presentViewController:alert animated:YES completion:nil];
+				return;
+			}
+
+			[agmode release];
+			agmode = [[NSString alloc] initWithFormat:@"mm_%s", m->name];
+			chosen = index;
+		}]];
+	}
+
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+	// an iPad shows it as a popover from the card
+	sheet.popoverPresentationController.sourceView = card;
+	sheet.popoverPresentationController.sourceRect = card.bounds;
+	[self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)showOptions
@@ -450,6 +581,10 @@ char **IOS_RunLauncher( const char *docsdir, int *argc )
 	// Pick the server library by name: liblist.gam files from different Steam
 	// releases name it differently, ours are always <lib>_ios_arm64.dylib
 	[args addObjectsFromArray:@[@"-game", @( g->dir ), @"-dll", [NSString stringWithFormat:@"@%s", g->lib]]];
+
+	// Multiplayer Modes: the mode the server starts in
+	if( menu->agmode )
+		[args addObjectsFromArray:@[@"+sv_ag_gamemode", menu->agmode]];
 
 	NSString *extra = [[NSUserDefaults standardUserDefaults] stringForKey:kArgsKey] ?: kDefaultArgs;
 	for( NSString *arg in [extra componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] )
