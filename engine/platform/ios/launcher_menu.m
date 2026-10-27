@@ -349,8 +349,26 @@ static BOOL IsAnniversaryData( NSString *root )
 
 @end
 
+// iOS hides an app's folder in the Files app while it's empty, so a note
+// on what goes there keeps it visible from the first launch
+static void WriteHowTo( NSString *docs )
+{
+	NSString *path = [docs stringByAppendingPathComponent:@"Copy game folders here.txt"];
+	NSString *text = @"Copy your game folders into this folder (next to this file):\n\n"
+		@"  valve    - Half-Life (needed by all three games)\n"
+		@"  gearbox  - Half-Life: Opposing Force\n"
+		@"  bshift   - Half-Life: Blue Shift\n\n"
+		@"They are in Steam > steamapps > common > Half-Life on your computer.\n"
+		@"Copying the whole Half-Life folder here also works.\n";
+
+	if( ![[NSFileManager defaultManager] fileExistsAtPath:path] )
+		[text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
 char **IOS_RunLauncher( const char *docsdir, int *argc )
 {
+	WriteHowTo( @( docsdir ));
+
 	UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	XashLauncherController *menu = [[XashLauncherController alloc] init];
 	NSMutableArray *args = [NSMutableArray array];
