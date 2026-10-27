@@ -34,6 +34,7 @@ typedef struct launcher_game_s
 	const char *title;
 	const char *subtitle;
 	const char *marker;   // file that must exist in the game folder
+	const char *source;   // where its folder comes from, NULL: Steam
 } launcher_game_t;
 
 static const launcher_game_t games[] =
@@ -41,6 +42,10 @@ static const launcher_game_t games[] =
 { "valve",   "hl",     "Half-Life",                  "1998",             "halflife.wad" },
 { "gearbox", "opfor",  "Half-Life: Opposing Force",  "Gearbox, 1999",    "pak0.pak" },
 { "bshift",  "bshift", "Half-Life: Blue Shift",      "Gearbox, 2001",    "pak0.pak" },
+// multiplayer modes (arena, last man standing, instagib, CTF...): the
+// library is ours, the folder comes from the free AG mod
+{ "ag",      "ag",     "Multiplayer Modes",          "Adrenaline Gamer", "liblist.gam",
+	"the free Adrenaline Gamer mod (AG 6.6 on ModDB, or OpenAG's full package at openag.pro)" },
 };
 
 #define NUM_GAMES ( sizeof( games ) / sizeof( games[0] ))
@@ -135,7 +140,6 @@ static game_state_t GameState( NSString *root, const launcher_game_t *g )
 	return GAME_READY;
 }
 
-// The 25th anniversary update (2023) added the hldemo chapter to valve
 // For multiplayer: the addresses friends can join this device at, its
 // Wi-Fi one and its Tailscale one (100.64.0.0/10, on a utun interface)
 static NSString *JoinAddresses( void )
@@ -173,6 +177,88 @@ static NSString *JoinAddresses( void )
 	return nil;
 }
 
+// ---------------------------------------------------------------- AG modes
+
+// The Multiplayer Modes card's modes. Each is a gamemode config of our own
+// (gamemodes/mm_<name>.cfg in the ag folder, written by the launcher, so
+// AG's own configs are never touched) that sets everything it depends on,
+// so one mode's settings never leak into the next.
+typedef struct
+{
+	const char *name;   // mm_<name>
+	const char *title;
+	const char *about;
+	const char *settings;
+} ag_mode_t;
+
+#define AG_NO_PICKUPS \
+	"sv_ag_ban_crowbar 1\nsv_ag_ban_glock 1\nsv_ag_ban_357 1\nsv_ag_ban_mp5 1\nsv_ag_ban_shotgun 1\n" \
+	"sv_ag_ban_crossbow 1\nsv_ag_ban_rpg 1\nsv_ag_ban_gauss 1\nsv_ag_ban_egon 1\nsv_ag_ban_hornet 1\n" \
+	"sv_ag_ban_hgrenade 1\nsv_ag_ban_satchel 1\nsv_ag_ban_tripmine 1\nsv_ag_ban_snark 1\nsv_ag_ban_m203 1\n" \
+	"sv_ag_ban_9mmar 1\nsv_ag_ban_bockshot 1\nsv_ag_ban_uranium 1\nsv_ag_ban_bolts 1\nsv_ag_ban_rockets 1\n" \
+	"sv_ag_ban_357ammo 1\n"
+#define AG_NO_START \
+	"sv_ag_start_crowbar 0\nsv_ag_start_glock 0\nsv_ag_start_9mmar 0\n"
+#define AG_TEAMS "mp_teamplay 1\nmp_teamlist \"blue;red\"\n"
+
+static const ag_mode_t ag_modes[] =
+{
+{ "ffa",      "Deathmatch",         "Everyone for themselves", "" },
+{ "tdm",      "Team Deathmatch",    "Blue against red", AG_TEAMS },
+{ "arena",    "Arena",              "One on one, the winner stays in", "sv_ag_gametype arena\n" },
+{ "lms",      "Last Man Standing",  "No respawns: the last one alive wins the round", "sv_ag_gametype lms\n" },
+{ "instagib", "Instagib",           "Tau cannons that kill in one hit", "sv_ag_gametype instagib\n" AG_NO_PICKUPS AG_NO_START
+	"sv_ag_start_gauss 1\nsv_ag_start_uranium 100\n" },
+{ "gungame",  "Gun Game",           "Each kill moves you to the next weapon; win with the crowbar", "sv_ag_gametype gungame\n" AG_NO_PICKUPS AG_NO_START },
+{ "lowgrav",  "Low Gravity",        "Deathmatch on the moon", "sv_gravity 200\n" },
+{ "crowbar",  "Crowbars Only",      "Deathmatch with crowbars", AG_NO_PICKUPS AG_NO_START "sv_ag_start_crowbar 1\n" },
+{ "snarks",   "Snarks Only",        "Deathmatch with snarks (and a crowbar)", AG_NO_PICKUPS AG_NO_START "sv_ag_start_crowbar 1\nsv_ag_start_snark 15\n" },
+{ "rockets",  "Rockets Only",       "Deathmatch with RPGs (and a crowbar)", AG_NO_PICKUPS AG_NO_START "sv_ag_start_crowbar 1\nsv_ag_start_rpg 1\nsv_ag_start_rockets 5\n" },
+{ "ctf",      "Capture the Flag",   "Needs CTF maps (agctf_...)", "sv_ag_gametype ctf\n" AG_TEAMS },
+{ "dom",      "Domination",         "Needs domination maps (agdom_...)", "sv_ag_gametype dom\n" AG_TEAMS },
+};
+
+#define NUM_AG_MODES ( sizeof( ag_modes ) / sizeof( ag_modes[0] ))
+
+// what every mode starts from: AG's defaults
+static NSString *const kAgBase =
+	@"sv_ag_gametype \"\"\n"
+	@"mp_teamplay 0\n"
+	@"sv_gravity 800\n"
+	@"mp_weaponstay 0\n"
+	@"sv_ag_ban_crowbar 0\nsv_ag_ban_glock 0\nsv_ag_ban_357 0\nsv_ag_ban_mp5 0\nsv_ag_ban_shotgun 0\n"
+	@"sv_ag_ban_crossbow 0\nsv_ag_ban_rpg 0\nsv_ag_ban_gauss 0\nsv_ag_ban_egon 0\nsv_ag_ban_hornet 0\n"
+	@"sv_ag_ban_hgrenade 0\nsv_ag_ban_satchel 0\nsv_ag_ban_tripmine 0\nsv_ag_ban_snark 0\nsv_ag_ban_m203 0\n"
+	@"sv_ag_ban_9mmar 0\nsv_ag_ban_bockshot 0\nsv_ag_ban_uranium 0\nsv_ag_ban_bolts 0\nsv_ag_ban_rockets 0\n"
+	@"sv_ag_ban_357ammo 0\n"
+	@"sv_ag_start_crowbar 1\nsv_ag_start_glock 1\nsv_ag_start_357 0\nsv_ag_start_mp5 0\nsv_ag_start_shotgun 0\n"
+	@"sv_ag_start_crossbow 0\nsv_ag_start_rpg 0\nsv_ag_start_gauss 0\nsv_ag_start_egon 0\nsv_ag_start_hornet 0\n"
+	@"sv_ag_start_hgrenade 0\nsv_ag_start_satchel 0\nsv_ag_start_tripmine 0\nsv_ag_start_snark 0\nsv_ag_start_m203 0\n"
+	@"sv_ag_start_9mmar 68\nsv_ag_start_bockshot 0\nsv_ag_start_uranium 0\nsv_ag_start_bolts 0\nsv_ag_start_rockets 0\n"
+	@"sv_ag_start_357ammo 0\nsv_ag_start_health 100\nsv_ag_start_armour 0\n";
+
+// (re)writes our mode configs into the ag folder's gamemodes
+static BOOL WriteAgModes( NSString *agdir )
+{
+	NSString *dir = FindChild( agdir, @"gamemodes" ) ?: [agdir stringByAppendingPathComponent:@"gamemodes"];
+	BOOL ok = YES;
+
+	[[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+
+	for( int i = 0; i < (int)NUM_AG_MODES; i++ )
+	{
+		const ag_mode_t *m = &ag_modes[i];
+		// AG reads the first two lines as the mode's name and description
+		NSString *text = [NSString stringWithFormat:@"// %s\n// %s\n%@%s", m->title, m->about, kAgBase, m->settings];
+		NSString *path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"mm_%s.cfg", m->name]];
+
+		ok = [text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil] && ok;
+	}
+
+	return ok;
+}
+
+// The 25th anniversary update (2023) added the hldemo chapter to valve
 static BOOL IsAnniversaryData( NSString *root )
 {
 	NSString *maps = FindChild( GameFolder( root, &games[0] ), @"maps" );
@@ -187,6 +273,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	UIStackView *cards;
 	UILabel *footer;
 	int chosen;
+	NSString *agmode; // the Multiplayer Modes card's mode, nil: just start
 }
 @end
 
@@ -261,6 +348,8 @@ static BOOL IsAnniversaryData( NSString *root )
 			return @"Ready · 25th anniversary data";
 		return @"Ready";
 	case GAME_MISSING:
+		if( g->source )
+			return [NSString stringWithFormat:@"Optional: copy the \"%s\" folder (tap for where from)", g->dir];
 		return [NSString stringWithFormat:@"Not installed: copy the \"%s\" folder", g->dir];
 	case GAME_INCOMPLETE:
 		return [NSString stringWithFormat:@"The \"%s\" folder is incomplete", g->dir];
@@ -346,6 +435,12 @@ static BOOL IsAnniversaryData( NSString *root )
 	const launcher_game_t *g = &games[card.tag];
 	game_state_t state = GameState( root, g );
 
+	if( state == GAME_READY && !strcmp( g->dir, "ag" ))
+	{
+		[self pickAgMode:card];
+		return;
+	}
+
 	if( state == GAME_READY )
 	{
 		chosen = (int)card.tag;
@@ -364,6 +459,13 @@ static BOOL IsAnniversaryData( NSString *root )
 		msg = [NSString stringWithFormat:@"The \"%s\" folder is there but has no game files (liblist.gam and %s). Copy the whole folder again; a copy that is still running in the Files app also looks like this. %@", g->dir, g->marker, steam];
 		break;
 	default:
+		if( g->source )
+		{
+			msg = [NSString stringWithFormat:@"%s is optional. Its \"%s\" folder comes from %s: download it on a computer and copy the \"%s\" folder next to \"valve\" in this app's folder in the Files app (On My %@ › %@). Only its data is used; the game code is already in the app.\n\nThis screen updates by itself when you come back.",
+				g->title, g->dir, g->source, g->dir, [UIDevice currentDevice].model,
+				[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app"];
+			break;
+		}
 		msg = [NSString stringWithFormat:@"Copy the \"%s\" folder from your own copy of %s into this app's folder in the Files app (On My %@ › %@). %@\n\nThis screen updates by itself when you come back.", g->dir, g->title, [UIDevice currentDevice].model,
 			[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app", steam];
 		break;
@@ -373,6 +475,49 @@ static BOOL IsAnniversaryData( NSString *root )
 		message:msg preferredStyle:UIAlertControllerStyleAlert];
 	[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
 	[self presentViewController:alert animated:YES completion:nil];
+}
+
+// Multiplayer Modes: which mode to host, or just start (to join a game)
+- (void)pickAgMode:(UIButton *)card
+{
+	int index = (int)card.tag;
+	UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Multiplayer Modes"
+		message:@"Pick a mode, then Multiplayer › Create game to host it. To join a friend's game, the mode is theirs."
+		preferredStyle:UIAlertControllerStyleActionSheet];
+
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Join a game" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+		chosen = index;
+	}]];
+
+	for( int i = 0; i < (int)NUM_AG_MODES; i++ )
+	{
+		const ag_mode_t *m = &ag_modes[i];
+
+		[sheet addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"%s — %s", m->title, m->about]
+			style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+			NSString *agdir = GameFolder( root, &games[index] );
+
+			if( !agdir || !WriteAgModes( agdir ))
+			{
+				UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Couldn't set up the modes"
+					message:@"The modes' settings couldn't be written into the \"ag\" folder." preferredStyle:UIAlertControllerStyleAlert];
+				[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+				[self presentViewController:alert animated:YES completion:nil];
+				return;
+			}
+
+			[agmode release];
+			agmode = [[NSString alloc] initWithFormat:@"mm_%s", m->name];
+			chosen = index;
+		}]];
+	}
+
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+	// an iPad shows it as a popover from the card
+	sheet.popoverPresentationController.sourceView = card;
+	sheet.popoverPresentationController.sourceRect = card.bounds;
+	[self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)showOptions
@@ -400,9 +545,10 @@ static void WriteHowTo( NSString *docs )
 {
 	NSString *path = [docs stringByAppendingPathComponent:@"Copy game folders here.txt"];
 	NSString *text = @"Copy your game folders into this folder (next to this file):\n\n"
-		@"  valve    - Half-Life (needed by all three games)\n"
+		@"  valve    - Half-Life (needed by all the others)\n"
 		@"  gearbox  - Half-Life: Opposing Force\n"
-		@"  bshift   - Half-Life: Blue Shift\n\n"
+		@"  bshift   - Half-Life: Blue Shift\n"
+		@"  ag       - Multiplayer Modes, optional (from the free Adrenaline Gamer mod)\n\n"
 		@"They are in Steam > steamapps > common > Half-Life on your computer.\n"
 		@"Copying the whole Half-Life folder here also works.\n";
 
@@ -435,6 +581,10 @@ char **IOS_RunLauncher( const char *docsdir, int *argc )
 	// Pick the server library by name: liblist.gam files from different Steam
 	// releases name it differently, ours are always <lib>_ios_arm64.dylib
 	[args addObjectsFromArray:@[@"-game", @( g->dir ), @"-dll", [NSString stringWithFormat:@"@%s", g->lib]]];
+
+	// Multiplayer Modes: the mode the server starts in
+	if( menu->agmode )
+		[args addObjectsFromArray:@[@"+sv_ag_gamemode", menu->agmode]];
 
 	NSString *extra = [[NSUserDefaults standardUserDefaults] stringForKey:kArgsKey] ?: kDefaultArgs;
 	for( NSString *arg in [extra componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] )

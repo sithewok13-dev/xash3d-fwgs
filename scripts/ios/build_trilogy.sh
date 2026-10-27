@@ -6,6 +6,9 @@
 # Env:
 #   HLSDK_REPO   git URL of hlsdk-portable (default FWGS upstream)
 #   HLSDK_GAMES  space separated branch:gamedir pairs
+#   HLSDK_OPTIONAL_GAMES  the same, built from HLSDK_OPTIONAL_REPO and left
+#                out if they fail ("" for none); default: the fork's ios-ag
+#                branch (Adrenaline Gamer and our multiplayer modes) as "ag"
 #   IPA_NAME     output file name in artifacts/
 
 set -e
@@ -15,6 +18,11 @@ cd "$ROOT"
 
 HLSDK_REPO=${HLSDK_REPO:-https://github.com/FWGS/hlsdk-portable}
 HLSDK_GAMES=${HLSDK_GAMES:-"master:valve opfor:gearbox bshift:bshift"}
+# optional extra game libraries: a failure leaves them out of the IPA
+# instead of failing the build (empty: none)
+# (from the fork, where our multiplayer modes live)
+HLSDK_OPTIONAL_REPO=${HLSDK_OPTIONAL_REPO:-https://github.com/sithewok13-dev/hlsdk-portable}
+HLSDK_OPTIONAL_GAMES=${HLSDK_OPTIONAL_GAMES-"ios-ag:ag"}
 IPA_NAME=${IPA_NAME:-Xash3D-iOS-unsigned.ipa}
 
 mkdir -p build
@@ -33,14 +41,16 @@ fi
 LIBSDIR="$ROOT/build/ios/libs"
 mkdir -p "$LIBSDIR"
 
-for pair in $HLSDK_GAMES; do
-	branch=${pair%%:*}
-	gamedir=${pair##*:}
+# builds one hlsdk branch's libraries for one game folder
+build_hlsdk() {
+	branch=$1
+	gamedir=$2
+	prefix=$3
+	repo=$4
 	src="$ROOT/build/hlsdk-$branch"
 
-	echo "::group::hlsdk $branch -> $gamedir"
 	rm -rf "$src"
-	git clone --recursive --depth 1 -b "$branch" "$HLSDK_REPO" "$src"
+	git clone --recursive --depth 1 -b "$branch" "$repo" "$src" || return 1
 	git -C "$src" log -1 --format='hlsdk %h %s'
 
 	# Release builds of hlsdk are broken on iOS upstream, so build Debug,
@@ -49,10 +59,30 @@ for pair in $HLSDK_GAMES; do
 		-DCMAKE_SYSTEM_NAME=iOS \
 		-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
 		-DCMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT=0 \
-		-DCMAKE_INSTALL_PREFIX="$LIBSDIR" \
+		-DCMAKE_INSTALL_PREFIX="$prefix" \
 		-DGAMEDIR="$gamedir" \
-		-DCMAKE_BUILD_TYPE=Debug
-	cmake --build "$src/build" --target install -j"$(sysctl -n hw.ncpu)"
+		-DCMAKE_BUILD_TYPE=Debug || return 1
+	cmake --build "$src/build" --target install -j"$(sysctl -n hw.ncpu)" || return 1
+}
+
+for pair in $HLSDK_GAMES; do
+	echo "::group::hlsdk ${pair%%:*} -> ${pair##*:}"
+	build_hlsdk "${pair%%:*}" "${pair##*:}" "$LIBSDIR" "$HLSDK_REPO"
+	echo "::endgroup::"
+done
+
+# optional ones go to their own folder first, so a half-built one can't
+# leave pieces in the IPA
+for pair in $HLSDK_OPTIONAL_GAMES; do
+	echo "::group::hlsdk ${pair%%:*} -> ${pair##*:} (optional)"
+	staged="$ROOT/build/ios/optional-${pair##*:}"
+	rm -rf "$staged"
+	if ( build_hlsdk "${pair%%:*}" "${pair##*:}" "$staged" "$HLSDK_OPTIONAL_REPO" ); then
+		cp -R "$staged"/. "$LIBSDIR"/
+		echo "Optional game ${pair##*:}: built"
+	else
+		echo "::warning::Optional game ${pair##*:} (hlsdk ${pair%%:*}) failed to build; left out of the IPA"
+	fi
 	echo "::endgroup::"
 done
 
