@@ -261,6 +261,7 @@ static CFTimeInterval burst_next;
 static int seq, seq_i, seq_n, seq_phase;
 static CFTimeInterval seq_next;
 static int freezing;
+static int overlay_shown; // in a running game, the controls up
 
 // the weapon wheel
 static ios_wheel_item_t wheel_items[IOSTOUCH_WHEEL_MAX];
@@ -1684,7 +1685,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	if( !px[IOSTOUCH_FLASH_EMPTY] || !px[IOSTOUCH_FLASH_FULL] )
 		return;
 
-	// the beam to the left of the lamp, as on the HUD, fitted in the circle
+	// the lamp and its beam, fitted round the button
 	total = w[IOSTOUCH_FLASH_EMPTY] + ( px[IOSTOUCH_FLASH_BEAM] ? w[IOSTOUCH_FLASH_BEAM] : 0 );
 	k = MIN( r * 2.6 / total, r * 1.3 / MAX( h[IOSTOUCH_FLASH_EMPTY], 1 ));
 
@@ -1692,7 +1693,8 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	flash_group.center = CGPointMake( r, r );
 	flash_group.userInteractionEnabled = NO;
 
-	CGRect lamp = CGRectMake(( total - w[IOSTOUCH_FLASH_EMPTY] ) * k, 0, w[IOSTOUCH_FLASH_EMPTY] * k, h[IOSTOUCH_FLASH_EMPTY] * k );
+	// the beam shines out of the lamp's head, on its right, as on the HUD
+	CGRect lamp = CGRectMake( 0, 0, w[IOSTOUCH_FLASH_EMPTY] * k, h[IOSTOUCH_FLASH_EMPTY] * k );
 
 	flash_empty = [[UIImageView alloc] initWithImage:TemplateImage( px[IOSTOUCH_FLASH_EMPTY], w[IOSTOUCH_FLASH_EMPTY], h[IOSTOUCH_FLASH_EMPTY] )];
 	flash_empty.frame = lamp;
@@ -1708,7 +1710,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	if( px[IOSTOUCH_FLASH_BEAM] )
 	{
 		flash_beam = [[UIImageView alloc] initWithImage:TemplateImage( px[IOSTOUCH_FLASH_BEAM], w[IOSTOUCH_FLASH_BEAM], h[IOSTOUCH_FLASH_BEAM] )];
-		flash_beam.frame = CGRectMake( 0, ( h[IOSTOUCH_FLASH_EMPTY] - h[IOSTOUCH_FLASH_BEAM] ) * 0.5 * k, w[IOSTOUCH_FLASH_BEAM] * k, h[IOSTOUCH_FLASH_BEAM] * k );
+		flash_beam.frame = CGRectMake( w[IOSTOUCH_FLASH_EMPTY] * k, ( h[IOSTOUCH_FLASH_EMPTY] - h[IOSTOUCH_FLASH_BEAM] ) * 0.5 * k, w[IOSTOUCH_FLASH_BEAM] * k, h[IOSTOUCH_FLASH_BEAM] * k );
 		[flash_group addSubview:flash_beam];
 	}
 
@@ -1767,6 +1769,13 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 
 		memset( s, 0, sizeof( *s ));
 		s->touch = t;
+
+		// the grace after the overlay went: swallowed
+		if( !overlay_shown )
+		{
+			s->role = ROLE_IGNORE;
+			continue;
+		}
 		s->start = s->last = p;
 		s->t0 = CACurrentMediaTime();
 
@@ -2200,7 +2209,12 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 // ---------------------------------------------------------------- per frame
 
 static IOSTouchOverlay *overlay;
-static int overlay_shown;
+
+// Just after the overlay goes (MENU opened the game menu), it keeps taking
+// touches for a moment, so a second tap on MENU can't land on the menu's
+// own buttons under it (its quit X sits right there)
+#define IOSTOUCH_HIDE_GRACE 0.5
+static CFTimeInterval hide_grace_until;
 
 static UIView *HostView( void *window )
 {
@@ -2296,10 +2310,25 @@ void IOSTouch_Frame( void *window, int ingame )
 		if( ingame != overlay_shown )
 		{
 			overlay_shown = ingame;
-			overlay.hidden = !ingame;
 
 			if( !ingame )
+			{
 				[overlay releaseAll];
+				hide_grace_until = CACurrentMediaTime() + IOSTOUCH_HIDE_GRACE;
+				overlay.alpha = 0.02; // (still takes touches, all ignored)
+			}
+			else
+			{
+				hide_grace_until = 0;
+				overlay.alpha = 1.0;
+				overlay.hidden = NO;
+			}
+		}
+
+		if( !overlay_shown && !overlay.hidden && CACurrentMediaTime() >= hide_grace_until )
+		{
+			overlay.hidden = YES;
+			overlay.alpha = 1.0;
 		}
 
 		if( !CGRectEqualToRect( overlay.bounds, overlay->laid_out_for )

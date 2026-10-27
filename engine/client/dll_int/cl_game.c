@@ -353,6 +353,20 @@ void SPR_AdjustSize( float *x, float *y, float *w, float *h )
 	{
 		float hx, hy, hw, hh;
 
+		// something over the HUD's whole screen (a fade, a title's
+		// backdrop) covers the whole real screen, not just the HUD's part
+		if( *x <= 0.0f && *y <= 0.0f && *x + *w >= clgame.scrInfo.iWidth && *y + *h >= clgame.scrInfo.iHeight )
+		{
+			float sx = refState.width / (float)clgame.scrInfo.iWidth;
+			float sy = refState.height / (float)clgame.scrInfo.iHeight;
+
+			*x *= sx;
+			*y *= sy;
+			*w *= sx;
+			*h *= sy;
+			return;
+		}
+
 		CL_IOSHudRect( &hx, &hy, &hw, &hh );
 		float xscale = hw / (float)clgame.scrInfo.iWidth;
 		float yscale = hh / (float)clgame.scrInfo.iHeight;

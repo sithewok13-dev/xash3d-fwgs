@@ -32,7 +32,7 @@ GNU General Public License for more details.
 #define PHOTO_MAX_POSED   48
 
 // HL units: the player is 72 tall, about 1.8 m
-#define SELFIE_DIST      56.0f   // arm's length, a bit more for the frame
+#define SELFIE_DIST      64.0f   // arm's length, a bit more for the frame
 #define SELFIE_DIRS      16
 #define SELFIE_FOV       75.0f
 #define POSE_RADIUS      800.0f
@@ -435,7 +435,7 @@ int IOS_PhotoSelfieBegin( void )
 		float offset = (( i + 1 ) / 2 ) * ( 360.0f / SELFIE_DIRS ) * (( i & 1 ) ? 1.0f : -1.0f );
 		float yaw = cl.viewangles[YAW] + offset;
 		float clear;
-		vec3_t angles = { -10.0f, yaw, 0.0f };
+		vec3_t angles = { 0.0f, yaw, 0.0f };
 
 		AngleVectors( angles, dir, NULL, NULL );
 		clear = IOS_PhotoClear( eyes, dir, SELFIE_DIST );
@@ -455,7 +455,7 @@ int IOS_PhotoSelfieBegin( void )
 	}
 
 	photo.yaw = photo.base_yaw;
-	photo.pitch = -10.0f;
+	photo.pitch = 0.0f; // at eye level: he looks straight into it
 	photo.dist = Q_max( best, FREEZE_MIN_DIST );
 	return 1;
 }

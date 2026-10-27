@@ -103,6 +103,7 @@ static char chapters_game[MAX_QPATH];
 static qboolean cheat_on;
 static char saved_sv_cheats[16];
 static int cheat_servercount = -1;
+static qboolean give_on_load; // LEVEL's map starts with nothing: the suit and weapons
 
 static edict_t *IOS_CheatPlayer( void )
 {
@@ -238,6 +239,7 @@ void IOS_GoToLevel( int i )
 		return;
 
 	Cbuf_AddTextf( "map %s\n", chapters[i]->map );
+	give_on_load = true;
 }
 
 // once a frame: god mode comes back on each new level, noclip and notarget
@@ -254,7 +256,8 @@ void IOS_CheatFrame( void )
 		return;
 
 	cheat_servercount = cl.servercount;
-	IOS_ApplyCheat( ent, false );
+	IOS_ApplyCheat( ent, give_on_load );
+	give_on_load = false;
 	ClearBits( ent->v.flags, FL_NOTARGET );
 	if( ent->v.movetype == MOVETYPE_NOCLIP )
 		ent->v.movetype = MOVETYPE_WALK;
