@@ -839,7 +839,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)updateShown
 {
-	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_RUN, BTN_TRAY_FPS, BTN_TRAY_TAPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
+	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_RUN, BTN_TRAY_FPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
 	static const int camrow[] = { BTN_CAM_CLEAN, BTN_CAM_HUD, BTN_CAM_BTNS, BTN_CAM_SELFIES, BTN_CAM_FREEZE };
 	CGFloat top = [self topRowY];
 	int n = 0;
@@ -866,6 +866,10 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			btn_shown[i] = 0;
 
 		if( i == BTN_CHEAT && !show_cheat )
+			btn_shown[i] = 0;
+
+		// TAPS stays off the tray (console: ios_taps)
+		if( i == BTN_TRAY_TAPS )
 			btn_shown[i] = 0;
 
 		// LEVEL only while the cheat is on, in single player
@@ -2378,6 +2382,14 @@ static UIView *taps_view;
 int IOSTouch_ShowTaps( void )
 {
 	return show_taps;
+}
+
+// TAPS is off the tray now that the menus take taps right; the console
+// command ios_taps (ios_touch_glue.c) still switches it
+void IOSTouch_SetShowTaps( int on )
+{
+	show_taps = on;
+	[[NSUserDefaults standardUserDefaults] setBool:show_taps forKey:KEY_SHOW_TAPS];
 }
 
 static UIView *HostView( void *window )

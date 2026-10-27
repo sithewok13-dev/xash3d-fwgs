@@ -64,6 +64,15 @@ static void IOS_TouchRunAction( int action )
 	}
 }
 
+// ios_taps [0|1]: the touch debugging marks (see IOS_TouchDebugDraw)
+static void IOS_Taps_f( void )
+{
+	int on = Cmd_Argc( ) > 1 ? Q_atoi( Cmd_Argv( 1 )) : !IOSTouch_ShowTaps( );
+
+	IOSTouch_SetShowTaps( on );
+	Con_Printf( "Touch marks %s\n", on ? "on: white ring = finger, red cross = the game's tap" : "off" );
+}
+
 void IOS_TouchFrame( void )
 {
 	static qboolean initialized;
@@ -76,6 +85,7 @@ void IOS_TouchFrame( void )
 		// the overlay replaces the engine's own touch buttons
 		Cvar_Set( "touch_enable", "0" );
 		IOS_CheatInit( );
+		Cmd_AddCommand( "ios_taps", IOS_Taps_f, "touch debugging marks: white ring = finger, red cross = the game's tap" );
 		initialized = true;
 	}
 

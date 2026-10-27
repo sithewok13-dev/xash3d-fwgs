@@ -69,8 +69,9 @@ void IOSTouch_KeepAwake( int on );
 // The console word "sithewok": switches the cheat, and shows its button
 void IOSTouch_ToggleCheat( void );
 
-// TAPS: the touch debugging marks are on
+// TAPS: the touch debugging marks are on (console: ios_taps 0/1)
 int IOSTouch_ShowTaps( void );
+void IOSTouch_SetShowTaps( int on );
 
 // engine side (ios_touch_glue.c)
 void IOS_TouchFrame( void );
