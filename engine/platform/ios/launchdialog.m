@@ -15,17 +15,13 @@
 
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#include "launcher_menu.h"
 
 #define XASHLIB "@rpath/libxash.dylib"
 
 int szArgc;
 char **szArgv;
 float g_iOSVer;
-
-//UI vars
-UIAlertController *alert;
-UIViewController *controller;
-bool finishedDialog = false;
 
 const char *IOS_GetDocsDir( void )
 {
@@ -60,52 +56,6 @@ const char *IOS_GetExecDir( void )
 }
 
 
-#define SETTINGS_MAGIC 111
-
-typedef struct settings_s
-{
-	unsigned char magic;
-	char args[1024];
-} settings_t;
-
-settings_t settings;
-FILE *settingsfile;
-char settingspath[256];
-
-static void SaveSettings( void ) 
-{
-	if( (settingsfile = fopen( settingspath, "wb" )) )
-	{
-		strlcpy( settings.args, [alert.textFields.firstObject.text UTF8String], 1024 );
-		settings.magic = 111;
-	
-		fwrite( &settings, sizeof(settings), 1, settingsfile );
-		fclose( settingsfile );
-	}
-}
-
-static void IOS_PrepareView( void )
-{
-	UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-	controller = [[UIViewController alloc] init];
-	[controller.view setBackgroundColor:[UIColor grayColor]];
-	[window setRootViewController:controller];
-	[window makeKeyAndVisible];
-	alert = [UIAlertController alertControllerWithTitle:@"Xash3D FWGS" 
-	message:nil
-	preferredStyle:UIAlertControllerStyleAlert];
-
-	UIAlertAction* startAction = [UIAlertAction actionWithTitle:@"Start" style:UIAlertActionStyleDefault
-   	handler:^(UIAlertAction *action) { finishedDialog = true; }];
-	UIAlertAction* exitAction = [UIAlertAction actionWithTitle:@"Exit" style:UIAlertActionStyleDefault
-   	handler:^(UIAlertAction *action) { 
-	SaveSettings();
-	NSLog(@"Exit Selected\n");
-	exit(0); }];
-	[alert addAction:startAction];
-	[alert addAction:exitAction];
-}
-
 void IOS_LaunchDialog( void )
 {
 	NSLog(@"System Version is %@",[[UIDevice currentDevice] systemVersion]);
@@ -115,61 +65,14 @@ void IOS_LaunchDialog( void )
 	//request microphone permissions otherwise we will crash when joining an online server
 	[[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted){}];
 
-	IOS_PrepareView();	
-
 	const char *docsDir = IOS_GetDocsDir();
 
 	//set working directory to documents so logs can be generated there
 	[[NSFileManager defaultManager] 
 	changeCurrentDirectoryPath:[NSString stringWithUTF8String:IOS_GetDocsDir()]];
-	
-	snprintf( settingspath, sizeof( settingspath ), "%s/settings.bin", docsDir );
-	settingspath[255] = 0;
- 
-	settingsfile = fopen( settingspath, "rb" );
-	bool ret = false;
-	if ( settingsfile ) 
-	{
-		ret = fread( &settings, sizeof( settings ), 1, settingsfile ) == 1;
-	}
 
-
-	[alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-		[textField setPlaceholder:@"Launch Options"];
-		if (ret && ( settings.magic == SETTINGS_MAGIC ))
-		{
-			[textField setText:@(settings.args)];
-		}
-		else
-		{
-			[textField setText:@"-dev 2 -log"];
-		}
-		[textField setAutocapitalizationType:UITextAutocapitalizationTypeNone];
-	}];
-
-	[controller presentViewController:alert animated:YES completion:nil];
-
-	@autoreleasepool {
-		while( !finishedDialog ) {
-			[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
-		}
-	}
-
-	NSArray *argv = [alert.textFields.firstObject.text componentsSeparatedByString:@" "];
-
-	SaveSettings();
-	
-	int count = [argv count];
-	szArgv = calloc( count + 2, sizeof( char* ) );
-	int i;
-	for( i = 0; i<count; i++ )
-	{
-		szArgv[i + 1] = strdup( [argv[i] UTF8String] );
-	}
-	szArgc = count + 1;
-	szArgv[count + 1] = 0;
-
-	[alert release];
+	// game picker for HL, OF and BS replaces the launch options dialog
+	szArgv = IOS_RunLauncher( docsDir, &szArgc );
 }
 
 char *IOS_GetUDID( void )

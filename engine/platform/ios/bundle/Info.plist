@@ -6,10 +6,12 @@
 	<string>25A362</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Half-Life</string>
 	<key>CFBundleExecutable</key>
 	<string>xash</string>
 	<key>CFBundleIdentifier</key>
-	<string>su.xash.engine</string>
+	<string>com.sithewok.xash3d</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -66,6 +68,8 @@
 		<string>arm64</string>
 	</array>
 	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UIStatusBarHidden</key>
 	<true/>
 	<key>UIStatusBarStyle</key>
 	<string>UIStatusBarStyleLightContent</string>
