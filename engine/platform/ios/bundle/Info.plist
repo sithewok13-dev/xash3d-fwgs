@@ -42,6 +42,8 @@
 	<string>17A400</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>LSSupportsGameMode</key>
 	<true/>
 	<key>MinimumOSVersion</key>

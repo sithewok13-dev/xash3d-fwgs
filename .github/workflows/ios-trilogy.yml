@@ -1,0 +1,78 @@
+# iOS build of Xash3D FWGS with Half-Life, Opposing Force and Blue Shift game
+# libraries in one unsigned IPA. Signing and TestFlight are done by
+# Sithewok-apps/ios-pipeline (testflight-ipa.yml), which takes the IPA from the
+# ios-latest release (master) or from a run artifact (any branch).
+name: iOS (HL + OF + BS)
+
+on:
+  push:
+    branches: [ master, 'ios/**' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      SDL_VERSION: 2.32.10
+      HLSDK_REPO: https://github.com/FWGS/hlsdk-portable
+      IPA_NAME: Xash3D-iOS-unsigned.ipa
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Cache SDL2.framework
+      id: sdl-cache
+      uses: actions/cache@v4
+      with:
+        path: sdl-ios/SDL2.framework
+        key: sdl2-ios-${{ env.SDL_VERSION }}-macos-26
+
+    - name: Build SDL2.framework
+      if: steps.sdl-cache.outputs.cache-hit != 'true'
+      run: |
+        git clone --depth 1 https://github.com/libsdl-org/SDL -b "release-$SDL_VERSION" sdl-src
+        cd sdl-src/Xcode/SDL
+        xcodebuild -scheme xcFramework-iOS -target xcFramework-iOS build -configuration Release
+        mkdir -p "$GITHUB_WORKSPACE/sdl-ios"
+        cp -R Products/SDL2.xcframework/ios-arm64/SDL2.framework "$GITHUB_WORKSPACE/sdl-ios/"
+
+    - name: Install SDL2.framework
+      run: |
+        sudo cp -R sdl-ios/SDL2.framework /Library/Frameworks/
+        mkdir -p build && cp -R sdl-ios/SDL2.framework build/
+
+    - name: Build IPA
+      run: bash scripts/ios/build_trilogy.sh
+
+    - name: Check IPA contents
+      run: |
+        unzip -l "artifacts/$IPA_NAME" | grep -E '\.dylib$|/xash$'
+        for d in valve gearbox bshift; do
+          unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/$d/dlls/" || { echo "missing $d server library"; exit 1; }
+          unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/$d/cl_dlls/" || { echo "missing $d client library"; exit 1; }
+        done
+
+    - name: Upload IPA (artifact)
+      uses: actions/upload-artifact@v4
+      with:
+        name: Xash3D-iOS-unsigned-ipa
+        path: artifacts/${{ env.IPA_NAME }}
+
+    - name: Publish ios-latest release
+      if: github.ref == 'refs/heads/master'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release delete ios-latest --yes --cleanup-tag || true
+        gh release create ios-latest "artifacts/$IPA_NAME" --prerelease \
+          --title "iOS latest" --notes "Unsigned IPA from ${GITHUB_SHA::7}. Game data is not included."
