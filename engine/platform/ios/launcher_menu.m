@@ -240,6 +240,46 @@ static NSString *const kAgBase =
 	@"sv_ag_start_9mmar 68\nsv_ag_start_bockshot 0\nsv_ag_start_uranium 0\nsv_ag_start_bolts 0\nsv_ag_start_rockets 0\n"
 	@"sv_ag_start_357ammo 0\nsv_ag_start_health 100\nsv_ag_start_armour 0\n";
 
+// ---------------------------------------------------------------- co-op
+
+// Half-Life co-op: the chapters to host from (as in LEVEL, ios_cheats.c)
+static const struct { const char *title, *map; } coop_chapters[] =
+{
+{ "Black Mesa Inbound",         "c0a0" },
+{ "Anomalous Materials",        "c1a0" },
+{ "Unforeseen Consequences",    "c1a1" },
+{ "Office Complex",             "c1a2" },
+{ "\"We've Got Hostiles\"",     "c1a3" },
+{ "Blast Pit",                  "c1a4" },
+{ "Power Up",                   "c2a1" },
+{ "On A Rail",                  "c2a2" },
+{ "Apprehension",               "c2a3" },
+{ "Residue Processing",         "c2a4" },
+{ "Questionable Ethics",        "c2a4d" },
+{ "Surface Tension",            "c2a5" },
+{ "\"Forget About Freeman!\"",  "c3a1" },
+{ "Lambda Core",                "c3a2" },
+{ "Xen",                        "c4a1" },
+{ "Gonarch's Lair",             "c4a2" },
+{ "Interloper",                 "c4a1a" },
+{ "Nihilanth",                  "c4a3" },
+};
+
+#define NUM_COOP_CHAPTERS ( sizeof( coop_chapters ) / sizeof( coop_chapters[0] ))
+#define COOP_PLAYERS "4"
+
+// a chapter whose first map isn't there (a pak install keeps no loose
+// maps, so then all of them are offered)
+static BOOL HasMap( NSString *gamedir, const char *map )
+{
+	NSString *maps = FindChild( gamedir, @"maps" );
+
+	if( !maps )
+		return YES;
+
+	return FindChild( maps, [NSString stringWithFormat:@"%s.bsp", map] ) != nil;
+}
+
 // (re)writes our mode configs into the ag folder's gamemodes
 static BOOL WriteAgModes( NSString *agdir )
 {
@@ -261,6 +301,13 @@ static BOOL WriteAgModes( NSString *agdir )
 	return ok;
 }
 
+// the co-op server library is in the app (an optional part of the build)
+static BOOL HasCoopLibrary( void )
+{
+	NSString *lib = [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:@"valve/dlls/hlcoop_ios_arm64.dylib"];
+	return [[NSFileManager defaultManager] fileExistsAtPath:lib];
+}
+
 // The 25th anniversary update (2023) added the hldemo chapter to valve
 static BOOL IsAnniversaryData( NSString *root )
 {
@@ -277,6 +324,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	UILabel *footer;
 	int chosen;
 	NSString *agmode; // the Multiplayer Modes card's mode, nil: just start
+	NSString *coopmap; // Half-Life co-op: the map to host, nil: not co-op
 }
 @end
 
@@ -449,6 +497,12 @@ static BOOL IsAnniversaryData( NSString *root )
 		return;
 	}
 
+	if( state == GAME_READY && !strcmp( g->dir, "valve" ) && HasCoopLibrary( ))
+	{
+		[self pickHalfLife:card];
+		return;
+	}
+
 	if( state == GAME_READY )
 	{
 		chosen = (int)card.tag;
@@ -483,6 +537,59 @@ static BOOL IsAnniversaryData( NSString *root )
 		message:msg preferredStyle:UIAlertControllerStyleAlert];
 	[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
 	[self presentViewController:alert animated:YES completion:nil];
+}
+
+// Half-Life: single player, or co-op (host a chapter, or join a friend)
+- (void)pickHalfLife:(UIButton *)card
+{
+	int index = (int)card.tag;
+	UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Half-Life"
+		message:@"Co-op: up to " COOP_PLAYERS @" players through the campaign. Whoever reaches a level change takes everyone along; a fallen player comes back next to a teammate. Co-op games can't be saved: host again from the chapter you reached."
+		preferredStyle:UIAlertControllerStyleActionSheet];
+
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Single player" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+		chosen = index;
+	}]];
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Co-op: host a chapter" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+		[self pickCoopChapter:card];
+	}]];
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Co-op: join a friend (Multiplayer › Internet/LAN game)" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+		chosen = index;
+	}]];
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+	sheet.popoverPresentationController.sourceView = card;
+	sheet.popoverPresentationController.sourceRect = card.bounds;
+	[self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)pickCoopChapter:(UIButton *)card
+{
+	int index = (int)card.tag;
+	NSString *gamedir = GameFolder( root, &games[index] );
+	UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Co-op: host a chapter"
+		message:@"Friends join with Multiplayer › Internet/LAN game, or Add server with the address under the games."
+		preferredStyle:UIAlertControllerStyleActionSheet];
+
+	for( int i = 0; i < (int)NUM_COOP_CHAPTERS; i++ )
+	{
+		NSString *map = @( coop_chapters[i].map );
+
+		if( !HasMap( gamedir, coop_chapters[i].map ))
+			continue;
+
+		[sheet addAction:[UIAlertAction actionWithTitle:@( coop_chapters[i].title ) style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
+			[coopmap release];
+			coopmap = [map retain];
+			chosen = index;
+		}]];
+	}
+
+	[sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+	sheet.popoverPresentationController.sourceView = card;
+	sheet.popoverPresentationController.sourceRect = card.bounds;
+	[self presentViewController:sheet animated:YES completion:nil];
 }
 
 // Multiplayer Modes: which mode to host, or just start (to join a game)
@@ -588,8 +695,13 @@ char **IOS_RunLauncher( const char *docsdir, int *argc )
 	setenv( "XASH3D_BASEDIR", [menu->root fileSystemRepresentation], 1 );
 
 	// Pick the server library by name: liblist.gam files from different Steam
-	// releases name it differently, ours are always <lib>_ios_arm64.dylib
-	[args addObjectsFromArray:@[@"-game", @( g->dir ), @"-dll", [NSString stringWithFormat:@"@%s", g->lib]]];
+	// releases name it differently, ours are always <lib>_ios_arm64.dylib.
+	// Co-op has its own (hlcoop), the vanilla one stays as it is.
+	[args addObjectsFromArray:@[@"-game", @( g->dir ), @"-dll", [NSString stringWithFormat:@"@%s", menu->coopmap ? "hlcoop" : g->lib]]];
+
+	// co-op host: a coop server on the chapter's map
+	if( menu->coopmap )
+		[args addObjectsFromArray:@[@"+maxplayers", @COOP_PLAYERS, @"+coop", @"1", @"+deathmatch", @"0", @"+map", menu->coopmap]];
 
 	// Multiplayer Modes: the mode the server starts in
 	if( menu->agmode )
