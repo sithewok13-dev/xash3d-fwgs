@@ -59,7 +59,16 @@ typedef struct
 {
 	int index;
 	float yaw, cur_yaw, prev_yaw; // ent->angles, curstate.angles, latched.prevangles
+
+	// in selfies, characters near the player strike a pose of their own
+	int seq, frame;               // -1: just face the camera
+	int saved_seq, saved_prevseq;
+	float saved_frame, saved_framerate, saved_prevframe, saved_seqtime;
+	byte saved_blend, saved_prevblend;
 } posed_t;
+
+// characters this close to the player pose with them in selfies
+#define NPC_POSE_RADIUS 320.0f
 
 static struct
 {
@@ -177,6 +186,9 @@ void IOS_HoldGame( int on )
 
 // nearby monsters turn to face the camera, client side only (their state on
 // the server is untouched); refreshed every frame while the camera is up
+static int IOS_PhotoLevelBlend( model_t *model, int seq );
+static const char *IOS_PhotoSequenceName( model_t *model, int seq );
+
 static void IOS_PhotoFindPosed( void )
 {
 	vec3_t eyes;
@@ -202,6 +214,15 @@ static void IOS_PhotoFindPosed( void )
 		photo.posed[photo.num_posed].yaw = ent->angles[YAW];
 		photo.posed[photo.num_posed].cur_yaw = ent->curstate.angles[YAW];
 		photo.posed[photo.num_posed].prev_yaw = ent->latched.prevangles[YAW];
+		photo.posed[photo.num_posed].seq = -1;
+		photo.posed[photo.num_posed].saved_seq = ent->curstate.sequence;
+		photo.posed[photo.num_posed].saved_frame = ent->curstate.frame;
+		photo.posed[photo.num_posed].saved_framerate = ent->curstate.framerate;
+		photo.posed[photo.num_posed].saved_prevseq = ent->latched.prevsequence;
+		photo.posed[photo.num_posed].saved_prevframe = ent->latched.prevframe;
+		photo.posed[photo.num_posed].saved_seqtime = ent->latched.sequencetime;
+		photo.posed[photo.num_posed].saved_blend = ent->curstate.blending[0];
+		photo.posed[photo.num_posed].saved_prevblend = ent->latched.prevblending[0];
 		photo.num_posed++;
 	}
 }
@@ -225,6 +246,21 @@ static void IOS_PhotoPose( const vec3_t camera )
 		ent->angles[YAW] = angles[YAW];
 		ent->curstate.angles[YAW] = angles[YAW];
 		ent->latched.prevangles[YAW] = angles[YAW];
+
+		// a pose of its own, held as the player's is
+		if( photo.posed[i].seq >= 0 )
+		{
+			int blend = IOS_PhotoLevelBlend( ent->model, photo.posed[i].seq );
+
+			ent->curstate.sequence = photo.posed[i].seq;
+			ent->curstate.frame = photo.posed[i].frame;
+			ent->curstate.framerate = 0.0f;
+			ent->latched.prevsequence = photo.posed[i].seq;
+			ent->latched.prevframe = photo.posed[i].frame;
+			ent->latched.sequencetime = 0.0f;
+			ent->curstate.blending[0] = blend;
+			ent->latched.prevblending[0] = blend;
+		}
 	}
 }
 
@@ -241,6 +277,14 @@ static void IOS_PhotoUnpose( void )
 			ent->angles[YAW] = photo.posed[i].yaw;
 			ent->curstate.angles[YAW] = photo.posed[i].cur_yaw;
 			ent->latched.prevangles[YAW] = photo.posed[i].prev_yaw;
+			ent->curstate.sequence = photo.posed[i].saved_seq;
+			ent->curstate.frame = photo.posed[i].saved_frame;
+			ent->curstate.framerate = photo.posed[i].saved_framerate;
+			ent->latched.prevsequence = photo.posed[i].saved_prevseq;
+			ent->latched.prevframe = photo.posed[i].saved_prevframe;
+			ent->latched.sequencetime = photo.posed[i].saved_seqtime;
+			ent->curstate.blending[0] = photo.posed[i].saved_blend;
+			ent->latched.prevblending[0] = photo.posed[i].saved_prevblend;
 		}
 	}
 
@@ -315,6 +359,47 @@ static int IOS_PhotoLevelBlend( model_t *model, int seq )
 }
 
 // a new random pose, different from the last
+// any move of a model but dying or lying dead: a random pose
+static int IOS_PhotoRandomSequence( model_t *model )
+{
+	studiohdr_t *hdr = model && model->type == mod_studio ? (studiohdr_t *)Mod_StudioExtradata( model ) : NULL;
+	int tries;
+
+	for( tries = 0; hdr && hdr->numseq > 1 && tries < 24; tries++ )
+	{
+		int seq = COM_RandomLong( 0, hdr->numseq - 1 );
+		const char *name = IOS_PhotoSequenceName( model, seq );
+
+		if( Q_stristr( name, "die" ) || Q_stristr( name, "death" ) || Q_stristr( name, "dead" )
+			|| Q_stristr( name, "dummy" ) || Q_stristr( name, "sleep" ) || Q_stristr( name, "lying" ))
+			continue;
+
+		return seq;
+	}
+
+	return -1;
+}
+
+// the characters near the player: each a random pose of its own
+static void IOS_PhotoPickNpcPoses( cl_entity_t *player )
+{
+	int i;
+
+	for( i = 0; i < photo.num_posed; i++ )
+	{
+		cl_entity_t *ent = CL_GetEntityByIndex( photo.posed[i].index );
+
+		photo.posed[i].seq = -1;
+		if( !ent || !player || VectorDistance( ent->origin, player->origin ) > NPC_POSE_RADIUS )
+			continue;
+
+		photo.posed[i].seq = IOS_PhotoRandomSequence( ent->model );
+		photo.posed[i].frame = COM_RandomLong( 64, 192 );
+		if( photo.posed[i].seq >= 0 )
+			Con_Reportf( "iOS photo: %s poses %s\n", ent->model->name, IOS_PhotoSequenceName( ent->model, photo.posed[i].seq ));
+	}
+}
+
 static void IOS_PhotoPickPose( void )
 {
 	cl_entity_t *player = CL_GetLocalPlayer( );
@@ -323,6 +408,9 @@ static void IOS_PhotoPickPose( void )
 	photo.pose_seq = -1;
 	if( !player )
 		return;
+
+	if( photo.mode == CAM_SELFIE )
+		IOS_PhotoPickNpcPoses( player );
 
 	for( tries = 0; tries < 24; tries++ )
 	{
