@@ -86,8 +86,9 @@ for pair in $HLSDK_OPTIONAL_GAMES; do
 	echo "::endgroup::"
 done
 
-# Counter-Strike 1.6 (optional, as above): cs16-client's client, menus and
-# ReGameDLL_CS server (with the game's own bots), in "cstrike". It has no iOS
+# Counter-Strike 1.6 (optional, as above): cs16-client's client and
+# ReGameDLL_CS server (with the game's own bots), in "cstrike"; the menus are
+# the engine's own (cs16-client's need FreeType, not built for iOS here). It has no iOS
 # naming of its own, so its libraries are renamed to <name>_ios_arm64.dylib.
 CS16_REPO=${CS16_REPO-https://github.com/Velaron/cs16-client}
 build_cs16() {
@@ -101,6 +102,7 @@ build_cs16() {
 		-DCMAKE_OSX_ARCHITECTURES=arm64 \
 		-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
 		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_MAINUI=OFF \
 		-DCMAKE_INSTALL_PREFIX="$staged" || return 1
 	cmake --build "$cssrc/build" -j"$(sysctl -n hw.ncpu)" || return 1
 	cmake --install "$cssrc/build" || return 1
