@@ -25,7 +25,6 @@ static const char *ios_touch_cmds[IOSTOUCH_CMD_COUNT] =
 };
 
 static unsigned int ios_touch_held;
-static int ios_touch_select_frames; // NEXT WPN: frames until the pick is confirmed
 
 static qboolean IOS_TouchInGame( void )
 {
@@ -37,10 +36,8 @@ static void IOS_TouchRunAction( int action )
 	switch( action )
 	{
 	case IOSTOUCH_ACT_NEXTWEAPON:
-		// the HUD's weapon list takes +attack as "pick this one" without firing
-		Cbuf_AddText( "invnext\n" );
-		// (dead, +attack would restart: no pick to confirm then)
-		ios_touch_select_frames = cl.local.health > 0 ? 3 : 0;
+		// straight to the next weapon with ammo, no HUD list
+		IOS_WeaponNext( );
 		break;
 	case IOSTOUCH_ACT_FLASHLIGHT:
 		Cbuf_AddText( "impulse 100\n" );
@@ -106,16 +103,6 @@ void IOS_TouchFrame( void )
 
 	while(( action = IOSTouch_PopAction( )) != IOSTOUCH_ACT_NONE )
 		IOS_TouchRunAction( action );
-
-	if( ios_touch_select_frames > 0 && --ios_touch_select_frames == 0 && !FBitSet( held, BIT( IOSTOUCH_CMD_ATTACK )))
-	{
-		Cbuf_AddText( "+attack\n" );
-		ios_touch_select_frames = -2; // released two frames later
-	}
-	else if( ios_touch_select_frames < 0 && ++ios_touch_select_frames == 0 && !FBitSet( held, BIT( IOSTOUCH_CMD_ATTACK )))
-	{
-		Cbuf_AddText( "-attack\n" );
-	}
 }
 
 void IOS_TouchGetMove( float *pitch, float *yaw )

@@ -2287,6 +2287,10 @@ void CL_ParseUserMessage( sizebuf_t *msg, int svc_num, connprotocol_t proto )
 
 	if( clgame.msg[i].func )
 	{
+#if XASH_IOS
+		// the weapon wheel follows what the HUD is told
+		IOS_WeaponsUserMsg( clgame.msg[i].name, iSize, pbuf );
+#endif
 		clgame.msg[i].func( clgame.msg[i].name, iSize, pbuf );
 
 #ifdef HACKS_RELATED_HLMODS

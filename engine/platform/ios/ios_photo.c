@@ -61,6 +61,8 @@ static struct
 {
 	cam_mode_t mode;
 	qboolean paused_by_us;
+	qboolean pause_pending;  // pause after this frame
+	qboolean held_by_wheel;
 
 	// the camera
 	vec3_t target;     // what it looks at: the player's eyes, plus pan
@@ -112,8 +114,18 @@ static float IOS_PhotoClear( const vec3_t start, const vec3_t dir, float dist )
 	return Q_max( 0.0f, tr.fraction * ( dist + FREEZE_WALL_GAP ) - FREEZE_WALL_GAP );
 }
 
+// While paused the engine keeps the last frame's list of entities to draw
+// (CL_EmitEntities), so the pause waits for the end of a frame drawn with
+// the camera up: one that has the player's body in it.
 static void IOS_PhotoPause( void )
 {
+	photo.pause_pending = true;
+}
+
+static void IOS_PhotoPauseNow( void )
+{
+	photo.pause_pending = false;
+
 	if( !sv.paused && IOS_PhotoSinglePlayer( ))
 	{
 		SV_TogglePause( NULL );
@@ -123,10 +135,33 @@ static void IOS_PhotoPause( void )
 
 static void IOS_PhotoUnpause( void )
 {
-	if( photo.paused_by_us && sv.paused && sv.state == ss_active )
+	photo.pause_pending = false;
+
+	if( photo.paused_by_us && sv.paused && sv.state == ss_active && !photo.held_by_wheel )
 		SV_TogglePause( NULL );
 
 	photo.paused_by_us = false;
+}
+
+// the weapon wheel holds a single player game still while it's open
+void IOS_HoldGame( int on )
+{
+	if( on )
+	{
+		if( !photo.held_by_wheel && !sv.paused && IOS_PhotoSinglePlayer( ))
+		{
+			SV_TogglePause( NULL );
+			photo.held_by_wheel = true;
+		}
+		return;
+	}
+
+	if( !photo.held_by_wheel )
+		return;
+
+	photo.held_by_wheel = false;
+	if( sv.paused && sv.state == ss_active && !photo.paused_by_us )
+		SV_TogglePause( NULL );
 }
 
 // nearby monsters turn to face the camera, client side only (their state on
@@ -438,6 +473,9 @@ int IOS_PhotoHideHUD( void )
 // at the end of the frame, before it's shown: the frame's photo
 void IOS_PhotoPostRender( void )
 {
+	if( photo.pause_pending && photo.mode != CAM_NONE )
+		IOS_PhotoPauseNow( );
+
 	if( photo.fov_overridden )
 	{
 		cl.local.scr_fov = photo.saved_fov;

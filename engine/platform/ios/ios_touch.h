@@ -103,6 +103,27 @@ void IOS_PhotoOrbitShot( int i, int n );
 void IOS_PhotoCapture( int kind, int burst );
 int IOS_PhotoBusy( void );
 
+// the weapon wheel (ios_weapons.c)
+typedef struct
+{
+	int id;
+	const char *name;
+	int clip;       // -1 unknown or none
+	int reserve;    // -1 for weapons without ammo
+	int has_ammo;
+	int current;
+} ios_wheel_item_t;
+
+void IOS_WeaponsUserMsg( const char *name, int size, const void *data );
+int IOS_WeaponList( ios_wheel_item_t *out, int max );
+void IOS_WeaponSelect( int id );
+void IOS_WeaponNext( void );
+const char *IOS_WeaponDisplayName( const char *classname );
+const unsigned char *IOS_WeaponIcon( int id, int *w, int *h );
+
+// holds a single player game still (the wheel), ios_photo.c
+void IOS_HoldGame( int on );
+
 // engine side (ios_cheats.c), single player only
 void IOS_CheatInit( void );
 void IOS_CheatFrame( void );

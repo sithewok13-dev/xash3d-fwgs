@@ -83,6 +83,24 @@ GNU General Public License for more details.
 #define IOSTOUCH_SEQ_CAPTURE 0.12  // ...a moment later the photo
 #define IOSTOUCH_SEQ_SHOW 0.9      // the last view stays this long
 #define IOSTOUCH_CINEMA_SHOTS 5
+// NEXT WPN: tap = next weapon; slid IOSTOUCH_WHEEL_OPEN_SLIDE = the weapon
+// wheel at once, to slide to a slice and lift; held IOSTOUCH_WHEEL_HOLD =
+// the wheel, to tap a slice. Picking by sliding is measured from where the
+// thumb went down, pointing nowhere within IOSTOUCH_WHEEL_DEAD, the point
+// trailing at most IOSTOUCH_WHEEL_LEASH behind; a slice stays picked until
+// the thumb points IOSTOUCH_WHEEL_HYST degrees past it. The gap at the
+// bottom (IOSTOUCH_WHEEL_GAP degrees) cancels.
+#define IOSTOUCH_WHEEL_OPEN_SLIDE 10.0
+#define IOSTOUCH_WHEEL_HOLD 0.3
+#define IOSTOUCH_WHEEL_DEAD 14.0
+#define IOSTOUCH_WHEEL_LEASH 60.0
+#define IOSTOUCH_WHEEL_HYST 4.0
+#define IOSTOUCH_WHEEL_GAP 50.0
+#define IOSTOUCH_WHEEL_R1_MAX 168.0
+#define IOSTOUCH_WHEEL_R0_FRAC 0.37
+#define IOSTOUCH_WHEEL_POP 10.0
+#define IOSTOUCH_WHEEL_MAX 32
+#define IOSTOUCH_WHEEL_CANCEL (-2)
 // Gyro
 #define IOSTOUCH_GYRO_HZ 100.0
 #define IOSTOUCH_GYRO_MAX_DT 0.05
@@ -159,6 +177,7 @@ typedef enum
 	KIND_CHEAT,    // held: the cheat on or off
 	KIND_LEVEL,    // held: counts the chapters, lifted: goes there
 	KIND_CAMERA,   // the photo mode's gestures
+	KIND_WHEEL,    // tap: next weapon, slide or hold: the weapon wheel
 } button_kind_t;
 
 enum { ROW_MAIN, ROW_TRAY, ROW_GYRO, ROW_CAM, ROW_FREEZE };
@@ -182,13 +201,13 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_USE]       = { "USE",          KIND_HOLD,    IOSTOUCH_CMD_USE,       29, 1, ROW_MAIN },
 [BTN_JUMP]      = { "JUMP",         KIND_HOLD,    IOSTOUCH_CMD_JUMP,      31, 1, ROW_MAIN },
 [BTN_RELOAD]    = { "RELOAD",       KIND_HOLD,    IOSTOUCH_CMD_RELOAD,    28, 1, ROW_MAIN },
-[BTN_NEXTWPN]   = { "NEXT\nWPN",    KIND_TAP,     IOSTOUCH_ACT_NEXTWEAPON, 22, 0, ROW_MAIN },
+[BTN_NEXTWPN]   = { "NEXT\nWPN",    KIND_WHEEL,   IOSTOUCH_ACT_NEXTWEAPON, 22, 0, ROW_MAIN, IOSTOUCH_WHEEL_HOLD },
 [BTN_FLASH]     = { "LIGHT",        KIND_TAP,     IOSTOUCH_ACT_FLASHLIGHT, 22, 0, ROW_MAIN },
 [BTN_QSAVE]     = { "QUICK\nSAVE",  KIND_HOLDACT, IOSTOUCH_ACT_QUICKSAVE, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
 [BTN_QLOAD]     = { "QUICK\nLOAD",  KIND_HOLDACT, IOSTOUCH_ACT_QUICKLOAD, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
 [BTN_MENU]      = { "MENU",         KIND_MENU,    IOSTOUCH_ACT_ESCAPE,    22, 0, ROW_MAIN, IOSTOUCH_MENU_HOLD },
-[BTN_CHEAT]     = { "CHEAT",        KIND_CHEAT,   0,                      22, 0, ROW_MAIN, IOSTOUCH_CHEAT_HOLD },
-[BTN_CAMERA]    = { "PHOTO",        KIND_CAMERA,  0,                      22, 0, ROW_MAIN, IOSTOUCH_CAM_HOLD },
+[BTN_CHEAT]     = { "\u03BB",      KIND_CHEAT,   0,                      22, 0, ROW_MAIN, IOSTOUCH_CHEAT_HOLD },
+[BTN_CAMERA]    = { "",             KIND_CAMERA,  0,                      22, 0, ROW_MAIN, IOSTOUCH_CAM_HOLD },
 [BTN_FREEZE_X]  = { "X",            KIND_TAP,     0,                      22, 0, ROW_FREEZE },
 [BTN_TRAY_GYRO] = { "GYRO",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
@@ -242,6 +261,12 @@ static CFTimeInterval burst_next;
 static int seq, seq_i, seq_n, seq_phase;
 static CFTimeInterval seq_next;
 static int freezing;
+
+// the weapon wheel
+static ios_wheel_item_t wheel_items[IOSTOUCH_WHEEL_MAX];
+static int wheel_n, wheel_open, wheel_slide, wheel_pick = -1;
+static CGPoint wheel_center, wheel_ref;
+static CGFloat wheel_r0, wheel_r1;
 static CFTimeInterval level_next, toast_until, jump_tap_end;
 static int gyro_running, gyro_was_ok, gyro_last_side;
 static CFTimeInterval gyro_turned_round, gyro_last_frame;
@@ -456,6 +481,11 @@ static void SaveGyro( void )
 	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
 	UILabel *toast;
 	UIView *flash;
+	UIView *wheel;               // the weapon wheel, made each time it opens
+	UILabel *wheel_title;
+	CAShapeLayer *wheel_slices[IOSTOUCH_WHEEL_MAX];
+	UIView *wheel_cells[IOSTOUCH_WHEEL_MAX];
+	NSMutableDictionary *icon_cache;
 	CGPoint stick_center;
 	CGFloat run_dist;            // 0: no marker
 	int running;
@@ -476,6 +506,7 @@ static void SaveGyro( void )
 - (void)updateLabels;
 - (void)flash:(int)burst;
 - (void)endCamera;
+- (void)closeWheel:(int)select;
 @end
 
 static UIView *MakeCircle( CGFloat radius, CGFloat alpha )
@@ -577,6 +608,21 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	toast.hidden = YES;
 	[self addSubview:toast];
 
+	// PHOTO: a camera; CHEAT: the lambda, big
+	if( @available( iOS 13.0, * ))
+	{
+		UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19 weight:UIImageSymbolWeightSemibold];
+		UIImageView *cam = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"camera.fill" withConfiguration:cfg]];
+		cam.tintColor = [UIColor whiteColor];
+		cam.contentMode = UIViewContentModeCenter;
+		cam.frame = btn_views[BTN_CAMERA].bounds;
+		[btn_views[BTN_CAMERA] addSubview:cam];
+	}
+	else btn_labels[BTN_CAMERA].text = @"PHOTO";
+
+	btn_labels[BTN_CHEAT].font = [UIFont systemFontOfSize:26 weight:UIFontWeightHeavy];
+	icon_cache = [[NSMutableDictionary alloc] init];
+
 	flash = [[UIView alloc] initWithFrame:self.bounds];
 	flash.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	flash.backgroundColor = [UIColor whiteColor];
@@ -665,6 +711,11 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	btn_views[BTN_CHEAT].layer.borderColor = cheat_on ?
 		[UIColor colorWithRed:1.0 green:0.8 blue:0.2 alpha:1.0].CGColor : [UIColor colorWithWhite:0.6 alpha:0.6].CGColor;
 	btn_labels[BTN_CHEAT].textColor = cheat_on ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithWhite:0.7 alpha:1.0];
+	btn_views[BTN_CHEAT].layer.borderWidth = cheat_on ? 2.5 : 1.5;
+	btn_views[BTN_CHEAT].layer.shadowColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.1 alpha:1.0].CGColor;
+	btn_views[BTN_CHEAT].layer.shadowRadius = 6;
+	btn_views[BTN_CHEAT].layer.shadowOffset = CGSizeZero;
+	btn_views[BTN_CHEAT].layer.shadowOpacity = cheat_on ? 0.9 : 0.0;
 
 	for( int i = 0; i < BTN_COUNT; i++ )
 	{
@@ -1240,6 +1291,293 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	}
 }
 
+// ---------------------------------------------------------------- weapon wheel
+
+static UIColor *HudOrange( CGFloat a )
+{
+	return [UIColor colorWithRed:1.0 green:160.0 / 255.0 blue:0.0 alpha:a];
+}
+
+// a weapon's HUD icon as a UIImage, made once
+- (UIImage *)iconFor:(const ios_wheel_item_t *)it
+{
+	NSString *key = [NSString stringWithFormat:@"%d %s", it->id, it->name];
+	UIImage *img = icon_cache[key];
+	const unsigned char *rgba;
+	int w = 0, h = 0;
+
+	if( img )
+		return [img isKindOfClass:[UIImage class]] ? img : nil;
+
+	rgba = IOS_WeaponIcon( it->id, &w, &h );
+	if( rgba && w > 0 && h > 0 )
+	{
+		CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+		CFDataRef data = CFDataCreate( NULL, rgba, (CFIndex)w * h * 4 );
+		CGDataProviderRef prov = CGDataProviderCreateWithCFData( data );
+		CGImageRef cg = CGImageCreate( w, h, 8, 32, (size_t)w * 4, cs,
+			kCGBitmapByteOrderDefault | kCGImageAlphaPremultipliedLast, prov, NULL, false, kCGRenderingIntentDefault );
+
+		if( cg )
+		{
+			img = [UIImage imageWithCGImage:cg];
+			CGImageRelease( cg );
+		}
+		CGDataProviderRelease( prov );
+		CFRelease( data );
+		CGColorSpaceRelease( cs );
+	}
+
+	icon_cache[key] = img ? img : (id)[NSNull null];
+	return img;
+}
+
+// slice i's angles in degrees, clockwise from the right, the gap at the bottom
+static void WheelSlice( int i, CGFloat *a0, CGFloat *a1 )
+{
+	CGFloat span = ( 360.0 - IOSTOUCH_WHEEL_GAP ) / MAX( wheel_n, 1 );
+	CGFloat start = 90.0 + IOSTOUCH_WHEEL_GAP * 0.5;
+
+	*a0 = start + i * span;
+	*a1 = *a0 + span;
+}
+
+static CGFloat AngleDiff( CGFloat a, CGFloat b )
+{
+	CGFloat d = fmod( a - b, 360.0 );
+	if( d < 0 )
+		d += 360.0;
+	return d;
+}
+
+// which slice a direction (degrees) points at; the gap cancels
+static int WheelSliceAt( CGFloat deg, int keep )
+{
+	CGFloat a0, a1;
+
+	if( keep >= 0 )
+	{
+		WheelSlice( keep, &a0, &a1 );
+		if( AngleDiff( deg, a0 - IOSTOUCH_WHEEL_HYST ) <= a1 - a0 + 2 * IOSTOUCH_WHEEL_HYST )
+			return keep;
+	}
+
+	for( int i = 0; i < wheel_n; i++ )
+	{
+		WheelSlice( i, &a0, &a1 );
+		if( AngleDiff( deg, a0 ) < a1 - a0 )
+			return i;
+	}
+
+	return IOSTOUCH_WHEEL_CANCEL;
+}
+
+static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, CGFloat a1 )
+{
+	UIBezierPath *path = [UIBezierPath bezierPathWithArcCenter:c radius:r1 startAngle:a0 * M_PI / 180.0 endAngle:a1 * M_PI / 180.0 clockwise:YES];
+	[path addArcWithCenter:c radius:r0 startAngle:a1 * M_PI / 180.0 endAngle:a0 * M_PI / 180.0 clockwise:NO];
+	[path closePath];
+	return path;
+}
+
+- (void)showWheelPick
+{
+	for( int i = 0; i < wheel_n; i++ )
+	{
+		CGFloat a0, a1, mid, pop = i == wheel_pick ? IOSTOUCH_WHEEL_POP : 0.0;
+		const ios_wheel_item_t *it = &wheel_items[i];
+
+		WheelSlice( i, &a0, &a1 );
+		mid = ( a0 + a1 ) * 0.5 * M_PI / 180.0;
+
+		wheel_slices[i].path = SectorPath( CGPointMake( wheel_center.x + pop * cos( mid ), wheel_center.y + pop * sin( mid )),
+			wheel_r0, wheel_r1, a0 + 1.0, a1 - 1.0 ).CGPath;
+		wheel_slices[i].fillColor = ( i == wheel_pick ? HudOrange( 0.45 ) :
+			( it->current ? HudOrange( 0.18 ) : [UIColor colorWithWhite:1.0 alpha:0.07] )).CGColor;
+		wheel_slices[i].strokeColor = ( i == wheel_pick ? HudOrange( 1.0 ) : [UIColor colorWithWhite:1.0 alpha:0.18] ).CGColor;
+		wheel_cells[i].center = CGPointMake( wheel_center.x + ( pop + ( wheel_r0 + wheel_r1 ) * 0.5 ) * cos( mid ),
+			wheel_center.y + ( pop + ( wheel_r0 + wheel_r1 ) * 0.5 ) * sin( mid ));
+	}
+
+	if( wheel_pick >= 0 )
+		wheel_title.text = @( wheel_items[wheel_pick].name );
+	else if( wheel_pick == IOSTOUCH_WHEEL_CANCEL )
+		wheel_title.text = @"Cancel";
+	else
+	{
+		wheel_title.text = @"";
+		for( int i = 0; i < wheel_n; i++ )
+		{
+			if( wheel_items[i].current )
+				wheel_title.text = @( wheel_items[i].name );
+		}
+	}
+}
+
+- (void)setWheelPick:(int)pick
+{
+	if( pick == wheel_pick )
+		return;
+
+	wheel_pick = pick;
+	Haptic( 1 );
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	[self showWheelPick];
+	[CATransaction commit];
+}
+
+- (void)openWheel:(int)slide from:(CGPoint)start
+{
+	CGSize size = self.bounds.size;
+
+	wheel_n = IOS_WeaponList( wheel_items, IOSTOUCH_WHEEL_MAX );
+	if( wheel_n <= 0 )
+	{
+		[self showToast:@"No weapons"];
+		return;
+	}
+
+	wheel_open = 1;
+	wheel_slide = slide;
+	wheel_pick = -1;
+	wheel_ref = start;
+	wheel_center = CGPointMake( size.width * 0.5, size.height * 0.5 );
+	wheel_r1 = MIN( IOSTOUCH_WHEEL_R1_MAX, size.height * 0.5 - 12.0 );
+	wheel_r0 = wheel_r1 * IOSTOUCH_WHEEL_R0_FRAC;
+
+	[wheel removeFromSuperview];
+	[wheel release];
+	wheel = [[UIView alloc] initWithFrame:self.bounds];
+	wheel.userInteractionEnabled = NO;
+
+	CAShapeLayer *disc = [CAShapeLayer layer];
+	disc.path = [UIBezierPath bezierPathWithArcCenter:wheel_center radius:wheel_r1 + 4 startAngle:0 endAngle:2 * M_PI clockwise:YES].CGPath;
+	disc.fillColor = [UIColor colorWithWhite:0.0 alpha:0.55].CGColor;
+	[wheel.layer addSublayer:disc];
+
+	for( int i = 0; i < wheel_n; i++ )
+	{
+		const ios_wheel_item_t *it = &wheel_items[i];
+		CGFloat a0, a1, cw, ch;
+		UIImage *icon = [self iconFor:it];
+		UIView *cell;
+		UILabel *ammo;
+		NSString *count = nil;
+
+		wheel_slices[i] = [CAShapeLayer layer];
+		wheel_slices[i].lineWidth = 1.5;
+		[wheel.layer addSublayer:wheel_slices[i]];
+
+		// the icon and the ammo, fitted to the slice
+		WheelSlice( i, &a0, &a1 );
+		cw = MIN( wheel_r1 - wheel_r0, ( wheel_r0 + wheel_r1 ) * 0.5 * ( a1 - a0 ) * M_PI / 180.0 ) * 0.92;
+		ch = cw * 0.62;
+		cell = [[[UIView alloc] initWithFrame:CGRectMake( 0, 0, cw, ch )] autorelease];
+		cell.alpha = it->has_ammo ? 1.0 : 0.35;
+
+		if( icon )
+		{
+			UIImageView *iv = [[[UIImageView alloc] initWithImage:icon] autorelease];
+			iv.contentMode = UIViewContentModeScaleAspectFit;
+			iv.frame = CGRectMake( 0, 0, cw, ch * 0.7 );
+			[cell addSubview:iv];
+		}
+		else
+		{
+			UILabel *name = [[[UILabel alloc] initWithFrame:CGRectMake( 0, 0, cw, ch * 0.7 )] autorelease];
+			name.text = @( it->name );
+			name.textColor = HudOrange( 1.0 );
+			name.font = [UIFont boldSystemFontOfSize:11];
+			name.textAlignment = NSTextAlignmentCenter;
+			name.adjustsFontSizeToFitWidth = YES;
+			name.minimumScaleFactor = 0.5;
+			[cell addSubview:name];
+		}
+
+		if( it->clip >= 0 && it->reserve >= 0 )
+			count = [NSString stringWithFormat:@"%d | %d", it->clip, it->reserve];
+		else if( it->reserve >= 0 )
+			count = [NSString stringWithFormat:@"%d", it->reserve];
+
+		if( count )
+		{
+			ammo = [[[UILabel alloc] initWithFrame:CGRectMake( 0, ch * 0.7, cw, ch * 0.3 )] autorelease];
+			ammo.text = count;
+			ammo.textColor = HudOrange( 0.95 );
+			ammo.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold];
+			ammo.textAlignment = NSTextAlignmentCenter;
+			ammo.adjustsFontSizeToFitWidth = YES;
+			ammo.minimumScaleFactor = 0.6;
+			[cell addSubview:ammo];
+		}
+
+		wheel_cells[i] = cell;
+		[wheel addSubview:cell];
+	}
+
+	wheel_title = [[[UILabel alloc] initWithFrame:CGRectMake( 0, 0, wheel_r0 * 1.9, 40 )] autorelease];
+	wheel_title.center = wheel_center;
+	wheel_title.textAlignment = NSTextAlignmentCenter;
+	wheel_title.numberOfLines = 2;
+	wheel_title.textColor = HudOrange( 1.0 );
+	wheel_title.font = [UIFont boldSystemFontOfSize:15];
+	wheel_title.adjustsFontSizeToFitWidth = YES;
+	wheel_title.minimumScaleFactor = 0.6;
+	[wheel addSubview:wheel_title];
+
+	[self insertSubview:wheel belowSubview:toast];
+	[self showWheelPick];
+
+	// the game holds still while the wheel is open
+	IOS_HoldGame( 1 );
+	Haptic( 0 );
+}
+
+// sliding to pick: the direction from where the thumb went down
+- (void)slideWheel:(CGPoint)p
+{
+	CGFloat dx = p.x - wheel_ref.x, dy = p.y - wheel_ref.y, d = hypot( dx, dy );
+
+	if( d > IOSTOUCH_WHEEL_LEASH )
+	{
+		wheel_ref.x = p.x - dx / d * IOSTOUCH_WHEEL_LEASH;
+		wheel_ref.y = p.y - dy / d * IOSTOUCH_WHEEL_LEASH;
+	}
+
+	if( d < IOSTOUCH_WHEEL_DEAD )
+		return;
+
+	[self setWheelPick:WheelSliceAt( atan2( dy, dx ) * 180.0 / M_PI, wheel_pick )];
+}
+
+// tapping: the slice under the finger, -1 for none
+- (int)wheelSliceUnder:(CGPoint)p
+{
+	CGFloat dx = p.x - wheel_center.x, dy = p.y - wheel_center.y, d = hypot( dx, dy );
+
+	if( d < wheel_r0 || d > wheel_r1 + IOSTOUCH_WHEEL_POP )
+		return -1;
+
+	return WheelSliceAt( atan2( dy, dx ) * 180.0 / M_PI, -1 );
+}
+
+- (void)closeWheel:(int)select
+{
+	if( !wheel_open )
+		return;
+
+	if( select && wheel_pick >= 0 && wheel_pick < wheel_n )
+		IOS_WeaponSelect( wheel_items[wheel_pick].id );
+
+	wheel_open = 0;
+	wheel_pick = -1;
+	[wheel removeFromSuperview];
+	[wheel release];
+	wheel = nil;
+	IOS_HoldGame( 0 );
+}
+
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
 	for( UITouch *t in touches )
@@ -1257,6 +1595,17 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		s->t0 = CACurrentMediaTime();
 
 		b = [self buttonAt:p];
+
+		// the wheel opened to tap: a slice picks, anywhere else closes it
+		if( wheel_open && !wheel_slide )
+		{
+			int i = [self wheelSliceUnder:p];
+			if( i >= 0 )
+				wheel_pick = i;
+			[self closeWheel:i >= 0];
+			s->role = ROLE_IGNORE;
+			continue;
+		}
 
 		// a camera sequence takes no touches; Action Freeze takes them all
 		if( seq != SEQ_NONE )
@@ -1325,7 +1674,19 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 				[self look:s->last to:p];
 			break;
 		case ROLE_BUTTON:
-			if( buttons[s->button].kind == KIND_CAMERA && !freezing )
+			if( buttons[s->button].kind == KIND_WHEEL )
+			{
+				if( wheel_open && wheel_slide )
+					[self slideWheel:p];
+				else if( !wheel_open && !s->done && Dist( p, s->start ) >= IOSTOUCH_WHEEL_OPEN_SLIDE )
+				{
+					s->done = 1;
+					[self setPressed:s->button on:0];
+					[self openWheel:1 from:s->start];
+					[self slideWheel:p];
+				}
+			}
+			else if( buttons[s->button].kind == KIND_CAMERA && !freezing )
 			{
 				CGFloat dx = p.x - s->start.x, dy = p.y - s->start.y;
 
@@ -1417,6 +1778,12 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			if( tap )
 				[self tapTray:b];
 			break;
+		case KIND_WHEEL:
+			if( wheel_open && wheel_slide )
+				[self closeWheel:!cancelled];
+			else if( tap )
+				QueueAction( def->arg );
+			break;
 		case KIND_CAMERA:
 			if( burst_on )
 			{
@@ -1478,6 +1845,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)releaseAll
 {
+	[self closeWheel:0];
+
 	for( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ )
 	{
 		if( slots[i].touch )
@@ -1601,6 +1970,11 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			break;
 		case BTN_CHEAT:
 			[self setCheat:!cheat_on];
+			break;
+		case BTN_NEXTWPN:
+			[self setPressed:BTN_NEXTWPN on:0];
+			if( !wheel_open )
+				[self openWheel:0 from:s->start];
 			break;
 		case BTN_CAMERA:
 			if( freezing )

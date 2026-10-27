@@ -323,8 +323,45 @@ SPR_AdjustSize
 draw hudsprite routine
 ====================
 */
+#if XASH_IOS
+/*
+=================
+CL_IOSHudRect
+
+iOS: the HUD's part of the screen, in pixels: clear of the rounded corners
+and the home bar (part of the side insets, all of the bottom one)
+=================
+*/
+static void CL_IOSHudRect( float *x, float *y, float *w, float *h )
+{
+	float left = refState.width * host.window_insets[0] * 0.6f;
+	float right = refState.width * host.window_insets[2] * 0.6f;
+	float bottom = refState.height * host.window_insets[3];
+
+	*x = left;
+	*y = 0.0f;
+	*w = refState.width - left - right;
+	*h = refState.height - bottom;
+}
+#endif
+
 void SPR_AdjustSize( float *x, float *y, float *w, float *h )
 {
+#if XASH_IOS
+	{
+		float hx, hy, hw, hh;
+
+		CL_IOSHudRect( &hx, &hy, &hw, &hh );
+		float xscale = hw / (float)clgame.scrInfo.iWidth;
+		float yscale = hh / (float)clgame.scrInfo.iHeight;
+
+		*x = hx + *x * xscale;
+		*y = hy + *y * yscale;
+		*w *= xscale;
+		*h *= yscale;
+		return;
+	}
+#endif
 	if( refState.width == clgame.scrInfo.iWidth && refState.height == clgame.scrInfo.iHeight )
 		return;
 
@@ -1666,6 +1703,30 @@ int GAME_EXPORT CL_GetScreenInfo( SCREENINFO *pscrinfo )
 	clgame.scrInfo.iSize = sizeof( clgame.scrInfo );
 	clgame.scrInfo.iFlags = SCRINFO_SCREENFLASH;
 
+#if XASH_IOS
+	{
+		// iOS: the HUD sized for a phone's dense screen (about 400 lines
+		// tall, as HL's HUD was drawn for 480) unless hud_scale says
+		// otherwise, inside the safe part of the screen (SPR_AdjustSize)
+		float hx, hy, hw, hh, scale;
+
+		CL_IOSHudRect( &hx, &hy, &hw, &hh );
+
+		if( hud_scale.value >= 320.0f )
+			scale = hw / hud_scale.value;
+		else if( hud_scale.value > 0.0f )
+			scale = hud_scale.value;
+		else scale = hh / 400.0f;
+
+		scale = Q_max( 1.0f, Q_min( scale, hw / 640.0f ));
+
+		clgame.scrInfo.iWidth = hw / scale;
+		clgame.scrInfo.iHeight = hh / scale;
+		SetBits( clgame.scrInfo.iFlags, SCRINFO_STRETCHED );
+		(void)apply_scale_factor;
+		(void)scale_factor;
+	}
+#else
 	if( hud_scale.value >= 320.0f && hud_scale.value >= hud_scale_minimal_width.value )
 	{
 		scale_factor = refState.width / hud_scale.value;
@@ -1690,6 +1751,7 @@ int GAME_EXPORT CL_GetScreenInfo( SCREENINFO *pscrinfo )
 		clgame.scrInfo.iHeight = refState.height;
 		ClearBits( clgame.scrInfo.iFlags, SCRINFO_STRETCHED );
 	}
+#endif // XASH_IOS
 
 	if( !pscrinfo ) return 0;
 
