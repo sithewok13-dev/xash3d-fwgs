@@ -213,7 +213,7 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_CAMERA]    = { "",             KIND_CAMERA,  0,                      22, 0, ROW_MAIN, IOSTOUCH_CAM_HOLD },
 [BTN_FREEZE_X]  = { "X",            KIND_TAP,     0,                      22, 0, ROW_FREEZE },
 [BTN_TRAY_GYRO] = { "GYRO",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
-[BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
+[BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_TAPS] = { "TAPS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_CAM]  = { "CAMERA",       KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
@@ -252,7 +252,8 @@ static int gyro_smooth_next;
 
 // main thread state
 static int gyro_mode = GYRO_OFF, gyro_last_mode = GYRO_TOUCH, gyro_sens_i = 1;
-static int look_sens_i = 2;
+#define LOOK_SENS_DEFAULT 2 // 1x
+static int look_sens_i = LOOK_SENS_DEFAULT;
 static int show_fps, show_taps, swapped, show_cheat, cheat_on;
 static int level_counting, level_index;
 static int show_camera = 1, camera_kinds = IOSTOUCH_PHOTO_CLEAN, selfie_shots = 3, freeze_on = 1, cam_row_open;
@@ -1132,6 +1133,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	case BTN_TRAY_SENS:
 		look_sens_i = ( look_sens_i + 1 ) % IOSTOUCH_COUNT( look_sens );
 		[[NSUserDefaults standardUserDefaults] setFloat:look_sens[look_sens_i] forKey:KEY_LOOK_SENS];
+		[self showToast:[NSString stringWithFormat:@"Look sensitivity %gx%@", look_sens[look_sens_i],
+			look_sens_i == LOOK_SENS_DEFAULT ? @" (default)" : @" — hold SENS for the default"]];
 		break;
 	case BTN_TRAY_FPS:
 		show_fps = !show_fps;
@@ -2198,6 +2201,13 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			tray_open = 1;
 			gyro_row_open = 0;
 			[self updateShown];
+			[self updateLabels];
+			break;
+		case BTN_TRAY_SENS:
+			// held: back to the default
+			look_sens_i = LOOK_SENS_DEFAULT;
+			[[NSUserDefaults standardUserDefaults] setFloat:look_sens[look_sens_i] forKey:KEY_LOOK_SENS];
+			[self showToast:[NSString stringWithFormat:@"Look sensitivity back to the default, %gx", look_sens[look_sens_i]]];
 			[self updateLabels];
 			break;
 		case BTN_TRAY_GYRO:
