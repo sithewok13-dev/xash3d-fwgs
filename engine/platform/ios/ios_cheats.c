@@ -182,6 +182,10 @@ void IOS_CheatSet( int on )
 	if( !ent )
 		return;
 
+	// a sound of its own, from the game's: an energy surge on, the
+	// "denied" buzz off
+	S_StartLocalSound( on ? "debris/beamstart1.wav" : "buttons/button10.wav", 1.0f, false );
+
 	if( on )
 	{
 		IOS_ApplyCheat( ent, true );
