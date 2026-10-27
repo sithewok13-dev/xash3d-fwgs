@@ -42,6 +42,9 @@ static const launcher_game_t games[] =
 { "valve",   "hl",     "Half-Life",                  "1998",             "halflife.wad" },
 { "gearbox", "opfor",  "Half-Life: Opposing Force",  "Gearbox, 1999",    "pak0.pak" },
 { "bshift",  "bshift", "Half-Life: Blue Shift",      "Gearbox, 2001",    "pak0.pak" },
+// cs16-client and ReGameDLL_CS (with the game's own bots); the data is the
+// player's own Steam copy, as for the others
+{ "cstrike", "cs",     "Counter-Strike",             "Valve, 2000",      "cstrike.wad" },
 // multiplayer modes (arena, last man standing, instagib, CTF...): the
 // library is ours, the folder comes from the free AG mod
 { "ag",      "ag",     "Multiplayer Modes",          "Adrenaline Gamer", "liblist.gam",
@@ -302,7 +305,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	cards = [[UIStackView alloc] init];
 	cards.axis = UILayoutConstraintAxisHorizontal;
 	cards.distribution = UIStackViewDistributionFillEqually;
-	cards.spacing = 16;
+	cards.spacing = 12;
 
 	footer = [[UILabel alloc] init];
 	footer.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
@@ -390,6 +393,9 @@ static BOOL IsAnniversaryData( NSString *root )
 		name.numberOfLines = 2;
 		name.textColor = ready ? [UIColor whiteColor] : [UIColor colorWithWhite:0.55 alpha:1.0];
 		name.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
+		// five cards on a phone: the text shrinks rather than cut off
+		name.adjustsFontSizeToFitWidth = YES;
+		name.minimumScaleFactor = 0.6;
 
 		UILabel *sub = [[UILabel alloc] init];
 		sub.text = @( g->subtitle );
@@ -401,6 +407,8 @@ static BOOL IsAnniversaryData( NSString *root )
 		status.numberOfLines = 3;
 		status.textColor = ready ? [UIColor colorWithRed:0.45 green:0.85 blue:0.45 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.65 blue:0.3 alpha:1.0];
 		status.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+		status.adjustsFontSizeToFitWidth = YES;
+		status.minimumScaleFactor = 0.7;
 
 		UIStackView *text = [[UIStackView alloc] initWithArrangedSubviews:@[name, sub, [[UIView alloc] init], status]];
 		text.axis = UILayoutConstraintAxisVertical;
@@ -548,6 +556,7 @@ static void WriteHowTo( NSString *docs )
 		@"  valve    - Half-Life (needed by all the others)\n"
 		@"  gearbox  - Half-Life: Opposing Force\n"
 		@"  bshift   - Half-Life: Blue Shift\n"
+		@"  cstrike  - Counter-Strike (Steam > steamapps > common > Half-Life too)\n"
 		@"  ag       - Multiplayer Modes, optional (from the free Adrenaline Gamer mod)\n\n"
 		@"They are in Steam > steamapps > common > Half-Life on your computer.\n"
 		@"Copying the whole Half-Life folder here also works.\n";

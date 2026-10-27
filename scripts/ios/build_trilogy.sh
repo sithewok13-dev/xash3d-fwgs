@@ -86,6 +86,60 @@ for pair in $HLSDK_OPTIONAL_GAMES; do
 	echo "::endgroup::"
 done
 
+# Counter-Strike 1.6 (optional, as above): cs16-client's client and
+# ReGameDLL_CS server (with the game's own bots), in "cstrike"; the menus are
+# the engine's own (cs16-client's need FreeType, not built for iOS here). It has no iOS
+# naming of its own, so its libraries are renamed to <name>_ios_arm64.dylib.
+CS16_REPO=${CS16_REPO-https://github.com/Velaron/cs16-client}
+build_cs16() {
+	cssrc="$ROOT/build/cs16-client"
+	staged=$1
+	rm -rf "$cssrc" "$staged"
+	git clone --recursive --depth 1 --shallow-submodules "$CS16_REPO" "$cssrc" || return 1
+	git -C "$cssrc" log -1 --format='cs16-client %h %s'
+	cmake -S "$cssrc" -B "$cssrc/build" \
+		-DCMAKE_SYSTEM_NAME=iOS \
+		-DCMAKE_OSX_ARCHITECTURES=arm64 \
+		-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_MAINUI=OFF \
+		-DCMAKE_INSTALL_PREFIX="$staged" || return 1
+	# just the client and the server (its bots included): not YaPB, the
+	# separate bot add-on, nor the install step that would want it
+	if ! cmake --build "$cssrc/build" --target client regamedll -j"$(sysctl -n hw.ncpu)" > "$cssrc/build.log" 2>&1; then
+		echo "cs16-client errors:"
+		grep -E "error|Error" "$cssrc/build.log" | grep -v "warning" | head -40
+		return 1
+	fi
+	mkdir -p "$staged/cstrike/cl_dlls" "$staged/cstrike/dlls"
+	find "$cssrc/build" -name 'client*.dylib' -exec cp {} "$staged/cstrike/cl_dlls/" \;
+	find "$cssrc/build" -name 'cs*.dylib' -path '*regamedll*' -exec cp {} "$staged/cstrike/dlls/" \;
+	find "$staged" -name '*.dylib' | while read -r lib; do
+		base=$(basename "$lib" .dylib)
+		case "$base" in
+			*_ios_arm64) ;;
+			*_arm64) mv "$lib" "$(dirname "$lib")/${base%_arm64}_ios_arm64.dylib" ;;
+			*) mv "$lib" "$(dirname "$lib")/${base}_ios_arm64.dylib" ;;
+		esac
+	done
+	echo "cs16-client files (only the libraries go in the IPA):"
+	find "$staged" -type f | sort
+	test -n "$(find "$staged" -name 'client_ios_arm64.dylib')" && test -n "$(find "$staged" -name 'cs_ios_arm64.dylib')"
+}
+
+if [ -n "$CS16_REPO" ]; then
+	echo "::group::cs16-client -> cstrike (optional)"
+	staged="$ROOT/build/ios/optional-cstrike"
+	if ( build_cs16 "$staged" ); then
+		mkdir -p "$LIBSDIR/cstrike"
+		( cd "$staged" && find . -name '*.dylib' -exec sh -c 'mkdir -p "$1/$(dirname "$2")" && cp "$2" "$1/$2"' _ "$LIBSDIR" {} \; )
+		echo "Optional game cstrike: built"
+	else
+		echo "::warning::Optional game cstrike (cs16-client) failed to build; left out of the IPA"
+	fi
+	echo "::endgroup::"
+fi
+
 echo "Game libraries:"
 find "$LIBSDIR" -name '*.dylib' | sort
 
