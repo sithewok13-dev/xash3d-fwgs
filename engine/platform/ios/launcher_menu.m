@@ -34,6 +34,7 @@ typedef struct launcher_game_s
 	const char *title;
 	const char *subtitle;
 	const char *marker;   // file that must exist in the game folder
+	const char *source;   // where its folder comes from, NULL: Steam
 } launcher_game_t;
 
 static const launcher_game_t games[] =
@@ -41,6 +42,10 @@ static const launcher_game_t games[] =
 { "valve",   "hl",     "Half-Life",                  "1998",             "halflife.wad" },
 { "gearbox", "opfor",  "Half-Life: Opposing Force",  "Gearbox, 1999",    "pak0.pak" },
 { "bshift",  "bshift", "Half-Life: Blue Shift",      "Gearbox, 2001",    "pak0.pak" },
+// multiplayer modes (arena, last man standing, instagib, CTF...): the
+// library is ours, the folder comes from the free AG mod
+{ "ag",      "ag",     "Multiplayer Modes",          "Adrenaline Gamer", "liblist.gam",
+	"the free Adrenaline Gamer mod (AG 6.6 on ModDB, or OpenAG's full package at openag.pro)" },
 };
 
 #define NUM_GAMES ( sizeof( games ) / sizeof( games[0] ))
@@ -135,7 +140,6 @@ static game_state_t GameState( NSString *root, const launcher_game_t *g )
 	return GAME_READY;
 }
 
-// The 25th anniversary update (2023) added the hldemo chapter to valve
 // For multiplayer: the addresses friends can join this device at, its
 // Wi-Fi one and its Tailscale one (100.64.0.0/10, on a utun interface)
 static NSString *JoinAddresses( void )
@@ -173,6 +177,7 @@ static NSString *JoinAddresses( void )
 	return nil;
 }
 
+// The 25th anniversary update (2023) added the hldemo chapter to valve
 static BOOL IsAnniversaryData( NSString *root )
 {
 	NSString *maps = FindChild( GameFolder( root, &games[0] ), @"maps" );
@@ -261,6 +266,8 @@ static BOOL IsAnniversaryData( NSString *root )
 			return @"Ready · 25th anniversary data";
 		return @"Ready";
 	case GAME_MISSING:
+		if( g->source )
+			return [NSString stringWithFormat:@"Optional: copy the \"%s\" folder (tap for where from)", g->dir];
 		return [NSString stringWithFormat:@"Not installed: copy the \"%s\" folder", g->dir];
 	case GAME_INCOMPLETE:
 		return [NSString stringWithFormat:@"The \"%s\" folder is incomplete", g->dir];
@@ -364,6 +371,13 @@ static BOOL IsAnniversaryData( NSString *root )
 		msg = [NSString stringWithFormat:@"The \"%s\" folder is there but has no game files (liblist.gam and %s). Copy the whole folder again; a copy that is still running in the Files app also looks like this. %@", g->dir, g->marker, steam];
 		break;
 	default:
+		if( g->source )
+		{
+			msg = [NSString stringWithFormat:@"%s is optional. Its \"%s\" folder comes from %s: download it on a computer and copy the \"%s\" folder next to \"valve\" in this app's folder in the Files app (On My %@ › %@). Only its data is used; the game code is already in the app.\n\nThis screen updates by itself when you come back.",
+				g->title, g->dir, g->source, g->dir, [UIDevice currentDevice].model,
+				[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app"];
+			break;
+		}
 		msg = [NSString stringWithFormat:@"Copy the \"%s\" folder from your own copy of %s into this app's folder in the Files app (On My %@ › %@). %@\n\nThis screen updates by itself when you come back.", g->dir, g->title, [UIDevice currentDevice].model,
 			[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app", steam];
 		break;
@@ -400,9 +414,10 @@ static void WriteHowTo( NSString *docs )
 {
 	NSString *path = [docs stringByAppendingPathComponent:@"Copy game folders here.txt"];
 	NSString *text = @"Copy your game folders into this folder (next to this file):\n\n"
-		@"  valve    - Half-Life (needed by all three games)\n"
+		@"  valve    - Half-Life (needed by all the others)\n"
 		@"  gearbox  - Half-Life: Opposing Force\n"
-		@"  bshift   - Half-Life: Blue Shift\n\n"
+		@"  bshift   - Half-Life: Blue Shift\n"
+		@"  ag       - Multiplayer Modes, optional (from the free Adrenaline Gamer mod)\n\n"
 		@"They are in Steam > steamapps > common > Half-Life on your computer.\n"
 		@"Copying the whole Half-Life folder here also works.\n";
 
