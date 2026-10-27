@@ -77,9 +77,11 @@ void IOS_TouchFrame( void )
 	{
 		// the overlay replaces the engine's own touch buttons
 		Cvar_Set( "touch_enable", "0" );
+		IOS_CheatInit( );
 		initialized = true;
 	}
 
+	IOS_CheatFrame( );
 	IOSTouch_Frame( host.hWnd, ingame );
 
 	held = ingame ? IOSTouch_HeldCommands( ) : 0;

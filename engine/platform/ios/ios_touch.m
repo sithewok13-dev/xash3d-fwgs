@@ -60,6 +60,17 @@ GNU General Public License for more details.
 // Holds
 #define IOSTOUCH_SAVE_HOLD 0.3
 #define IOSTOUCH_MENU_HOLD 0.45
+// The cheat: CHEAT held this long switches it; while it's on, JUMP or USE
+// held still (within IOSTOUCH_CHEAT_STILL points) this long switches noclip
+// or notarget, and two quick taps of JUMP end noclip ("land")
+#define IOSTOUCH_CHEAT_HOLD 0.5
+#define IOSTOUCH_CHEAT_STILL 10.0
+#define IOSTOUCH_LAND_TAP 0.25
+#define IOSTOUCH_LAND_GAP 0.35
+// LEVEL: held this long it shows chapter 1, then counts on every step
+#define IOSTOUCH_LEVEL_HOLD 0.5
+#define IOSTOUCH_LEVEL_STEP 0.4
+#define IOSTOUCH_TOAST_TIME 1.6
 // Gyro
 #define IOSTOUCH_GYRO_HZ 100.0
 #define IOSTOUCH_GYRO_MAX_DT 0.05
@@ -82,6 +93,7 @@ GNU General Public License for more details.
 #define KEY_LOOK_SENS @"iosTouchLookSens"
 #define KEY_SHOW_FPS  @"iosTouchShowFps"
 #define KEY_SWAPPED   @"iosTouchSwapped"
+#define KEY_SHOW_CHEAT @"iosTouchShowCheat"
 
 enum { GYRO_OFF, GYRO_TOUCH, GYRO_ALWAYS, GYRO_NUM_MODES };
 static const float gyro_sens[] = { 1.0f, 1.5f, 2.0f, 3.0f };
@@ -100,9 +112,12 @@ typedef enum
 	BTN_QSAVE,
 	BTN_QLOAD,
 	BTN_MENU,
+	BTN_CHEAT,
 	BTN_TRAY_GYRO,
 	BTN_TRAY_SENS,
 	BTN_TRAY_FPS,
+	BTN_TRAY_CHEAT,
+	BTN_TRAY_LEVEL,
 	BTN_TRAY_CTRL,
 	BTN_TRAY_KEYS,
 	BTN_GYRO_MODE,
@@ -117,6 +132,8 @@ typedef enum
 	KIND_HOLDACT,  // runs an action after a hold, with a ring
 	KIND_MENU,     // tap: Escape, hold: tray
 	KIND_TRAY,     // a tray or option row button
+	KIND_CHEAT,    // held: the cheat on or off
+	KIND_LEVEL,    // held: counts the chapters, lifted: goes there
 } button_kind_t;
 
 enum { ROW_MAIN, ROW_TRAY, ROW_GYRO };
@@ -145,9 +162,12 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_QSAVE]     = { "QUICK\nSAVE",  KIND_HOLDACT, IOSTOUCH_ACT_QUICKSAVE, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
 [BTN_QLOAD]     = { "QUICK\nLOAD",  KIND_HOLDACT, IOSTOUCH_ACT_QUICKLOAD, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
 [BTN_MENU]      = { "MENU",         KIND_MENU,    IOSTOUCH_ACT_ESCAPE,    22, 0, ROW_MAIN, IOSTOUCH_MENU_HOLD },
+[BTN_CHEAT]     = { "CHEAT",        KIND_CHEAT,   0,                      22, 0, ROW_MAIN, IOSTOUCH_CHEAT_HOLD },
 [BTN_TRAY_GYRO] = { "GYRO",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
+[BTN_TRAY_CHEAT] = { "CHEAT",       KIND_TRAY,    0,                      20, 0, ROW_TRAY },
+[BTN_TRAY_LEVEL] = { "LEVEL",       KIND_LEVEL,   0,                      20, 0, ROW_TRAY, IOSTOUCH_LEVEL_HOLD },
 [BTN_TRAY_CTRL] = { "CONTROLS",     KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_KEYS] = { "KEYS",         KIND_TRAY,    IOSTOUCH_ACT_CONSOLE,   20, 0, ROW_TRAY },
 [BTN_GYRO_MODE] = { "MODE",         KIND_TRAY,    0,                      20, 0, ROW_GYRO },
@@ -165,6 +185,7 @@ typedef struct
 	CFTimeInterval t0;
 	int done;     // a hold already fired
 	int off;      // slid off its button: no tap, no hold
+	CGFloat moved; // farthest it has been from where it went down
 } slot_t;
 
 // shared with the motion queue
@@ -176,7 +197,9 @@ static int gyro_smooth_next;
 // main thread state
 static int gyro_mode = GYRO_OFF, gyro_last_mode = GYRO_TOUCH, gyro_sens_i = 1;
 static int look_sens_i = 2;
-static int show_fps, swapped;
+static int show_fps, swapped, show_cheat, cheat_on;
+static int level_counting, level_index;
+static CFTimeInterval level_next, toast_until, jump_tap_end;
 static int gyro_running, gyro_was_ok, gyro_last_side;
 static CFTimeInterval gyro_turned_round, gyro_last_frame;
 static CMMotionManager *motion;
@@ -346,6 +369,7 @@ static void LoadSettings( void )
 	}
 
 	show_fps = (int)[d boolForKey:KEY_SHOW_FPS];
+	show_cheat = (int)[d boolForKey:KEY_SHOW_CHEAT];
 	swapped = (int)[d boolForKey:KEY_SWAPPED];
 }
 
@@ -372,6 +396,8 @@ static void SaveGyro( void )
 	UIView *stick_ring, *stick_knob, *run_marker;
 	UILabel *run_label;
 	CAShapeLayer *run_link;
+	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
+	UILabel *toast;
 	CGPoint stick_center;
 	CGFloat run_dist;            // 0: no marker
 	int running;
@@ -386,6 +412,10 @@ static void SaveGyro( void )
 - (void)releaseAll;
 - (void)updateHolds;
 - (int)gyroThumbDown;
+- (void)showToast:(NSString *)text;
+- (void)setCheat:(int)on;
+- (void)updateShown;
+- (void)updateLabels;
 @end
 
 static UIView *MakeCircle( CGFloat radius, CGFloat alpha )
@@ -453,7 +483,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		l.minimumScaleFactor = 0.6;
 		[v addSubview:l];
 
-		if( b->kind == KIND_HOLDACT || b->kind == KIND_MENU || b->hold > 0 )
+		if( b->kind == KIND_HOLDACT || b->kind == KIND_MENU || b->hold > 0 || i == BTN_JUMP || i == BTN_USE )
 		{
 			btn_rings[i] = [MakeHoldRing( b->radius ) retain];
 			[v.layer addSublayer:btn_rings[i]];
@@ -464,6 +494,28 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		btn_labels[i] = l;
 		[self addSubview:v];
 	}
+
+	for( int i = 0; i < 2; i++ )
+	{
+		UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake( 0, 0, 70, 12 )];
+		l.text = i ? @"NOTARGET" : @"NOCLIP";
+		l.textAlignment = NSTextAlignmentCenter;
+		l.font = [UIFont boldSystemFontOfSize:8];
+		l.textColor = [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
+		l.hidden = YES;
+		cheat_tags[i] = l;
+		[self addSubview:l];
+	}
+
+	toast = [[UILabel alloc] init];
+	toast.textAlignment = NSTextAlignmentCenter;
+	toast.textColor = [UIColor whiteColor];
+	toast.font = [UIFont boldSystemFontOfSize:14];
+	toast.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55];
+	toast.layer.cornerRadius = 8;
+	toast.layer.masksToBounds = YES;
+	toast.hidden = YES;
+	[self addSubview:toast];
 
 	stick_ring = MakeCircle( IOSTOUCH_STICK_RADIUS, 0.08 );
 	stick_knob = MakeCircle( IOSTOUCH_STICK_KNOB, 0.35 );
@@ -528,9 +580,23 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	btn_lit[BTN_TRAY_GYRO] = gyro_mode != GYRO_OFF;
 	btn_lit[BTN_TRAY_FPS] = show_fps;
 	btn_lit[BTN_TRAY_CTRL] = swapped;
+	btn_lit[BTN_TRAY_CHEAT] = show_cheat;
+	btn_lit[BTN_CHEAT] = cheat_on;
+
+	cheat_tags[0].hidden = cheat_tags[1].hidden = !cheat_on;
+	cheat_tags[0].textColor = IOS_CheatNoclip( ) ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
+	cheat_tags[1].textColor = IOS_CheatNotarget( ) ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
+
+	// CHEAT: gold while the cheat is on
+	btn_views[BTN_CHEAT].layer.borderColor = cheat_on ?
+		[UIColor colorWithRed:1.0 green:0.8 blue:0.2 alpha:1.0].CGColor : [UIColor colorWithWhite:0.6 alpha:0.6].CGColor;
+	btn_labels[BTN_CHEAT].textColor = cheat_on ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithWhite:0.7 alpha:1.0];
 
 	for( int i = 0; i < BTN_COUNT; i++ )
 	{
+		if( i == BTN_CHEAT )
+			continue;
+
 		btn_views[i].layer.borderColor = btn_lit[i] ?
 			[UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.95].CGColor :
 			[UIColor colorWithWhite:1.0 alpha:0.45].CGColor;
@@ -588,15 +654,13 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	[self place:BTN_QSAVE at:CGPointMake( right - 156, top )];
 	[self place:BTN_QLOAD at:CGPointMake( right - 90, top )];
 	[self place:BTN_MENU at:CGPointMake( right - 24, top )];
+	// CHEAT between the middle of the top row (CAMERA's place) and QUICK SAVE
+	[self place:BTN_CHEAT at:CGPointMake(( size.width * 0.5 + btn_pos[BTN_QSAVE].x ) * 0.5, top )];
 
-	// MENU's tray, ending under MENU, and the gyro options under its GYRO
-	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_FPS, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
-	CGFloat x = btn_pos[BTN_MENU].x - ( IOSTOUCH_COUNT( tray ) - 1 ) * IOSTOUCH_TRAY_STEP;
-	for( int i = 0; i < (int)IOSTOUCH_COUNT( tray ); i++ )
-		[self place:tray[i] at:CGPointMake( x + i * IOSTOUCH_TRAY_STEP, top + IOSTOUCH_TRAY_DROP )];
-
-	[self place:BTN_GYRO_MODE at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x, top + 2 * IOSTOUCH_TRAY_DROP )];
-	[self place:BTN_GYRO_SENS at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x + IOSTOUCH_TRAY_STEP, top + 2 * IOSTOUCH_TRAY_DROP )];
+	cheat_tags[0].center = CGPointMake( btn_pos[BTN_JUMP].x, btn_pos[BTN_JUMP].y + buttons[BTN_JUMP].radius + 7 );
+	cheat_tags[1].center = CGPointMake( btn_pos[BTN_USE].x, btn_pos[BTN_USE].y + buttons[BTN_USE].radius + 7 );
+	toast.frame = CGRectMake( 0, 0, MIN( 360, size.width - 2 * ( in.left + 140 )), 28 );
+	toast.center = CGPointMake( size.width * 0.5, top + IOSTOUCH_TRAY_DROP * 2 + 10 );
 
 	laid_out_for = self.bounds;
 	laid_out_insets = in;
@@ -607,6 +671,10 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)updateShown
 {
+	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_FPS, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
+	CGFloat top = [self topRowY];
+	int n = 0;
+
 	for( int i = 0; i < BTN_COUNT; i++ )
 	{
 		int row = buttons[i].row;
@@ -616,8 +684,56 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		if(( i == BTN_TRAY_GYRO || row == ROW_GYRO ) && !motion.deviceMotionAvailable )
 			btn_shown[i] = 0;
 
+		if( i == BTN_CHEAT && !show_cheat )
+			btn_shown[i] = 0;
+
+		// LEVEL only while the cheat is on, in single player
+		if( i == BTN_TRAY_LEVEL && ( !cheat_on || IOS_LevelCount( ) <= 0 ))
+			btn_shown[i] = 0;
+
 		btn_views[i].hidden = !btn_shown[i];
 	}
+
+	// MENU's tray, the buttons shown in it ending under MENU, and the gyro
+	// options under its GYRO
+	for( int i = 0; i < (int)IOSTOUCH_COUNT( tray ); i++ )
+		n += btn_shown[tray[i]] || !tray_open;
+
+	CGFloat x = btn_pos[BTN_MENU].x - ( n - 1 ) * IOSTOUCH_TRAY_STEP;
+	for( int i = 0; i < (int)IOSTOUCH_COUNT( tray ); i++ )
+	{
+		if( tray_open && !btn_shown[tray[i]] )
+			continue;
+
+		[self place:tray[i] at:CGPointMake( x, top + IOSTOUCH_TRAY_DROP )];
+		x += IOSTOUCH_TRAY_STEP;
+	}
+
+	[self place:BTN_GYRO_MODE at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x, top + 2 * IOSTOUCH_TRAY_DROP )];
+	[self place:BTN_GYRO_SENS at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x + IOSTOUCH_TRAY_STEP, top + 2 * IOSTOUCH_TRAY_DROP )];
+}
+
+- (void)showToast:(NSString *)text
+{
+	toast.text = text;
+	toast.hidden = NO;
+	toast_until = CACurrentMediaTime() + IOSTOUCH_TOAST_TIME;
+}
+
+- (void)setCheat:(int)on
+{
+	if( on && !IOS_CheatAllowed( ))
+	{
+		[self showToast:@"Cheats are for single player games"];
+		return;
+	}
+
+	cheat_on = on;
+	IOS_CheatSet( on );
+	Haptic( 0 );
+	[self showToast:on ? @"Cheat on: god mode, all weapons" : @"Cheat off"];
+	[self updateShown];
+	[self updateLabels];
 }
 
 - (int)buttonAt:(CGPoint)p
@@ -823,6 +939,14 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		[[NSUserDefaults standardUserDefaults] setBool:swapped forKey:KEY_SWAPPED];
 		[self layoutButtons];
 		break;
+	case BTN_TRAY_CHEAT:
+		// shows the CHEAT button and switches the cheat on; again, hides it
+		show_cheat = !show_cheat;
+		[[NSUserDefaults standardUserDefaults] setBool:show_cheat forKey:KEY_SHOW_CHEAT];
+		if( show_cheat != cheat_on )
+			[self setCheat:show_cheat];
+		[self updateShown];
+		break;
 	case BTN_TRAY_KEYS:
 		[self closeTray];
 		QueueAction( IOSTOUCH_ACT_CONSOLE );
@@ -889,6 +1013,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		if( !s )
 			continue;
 
+		s->moved = MAX( s->moved, Dist( p, s->start ));
+
 		switch( s->role )
 		{
 		case ROLE_STICK:
@@ -905,6 +1031,11 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 				// slid off: cancels a tap or a hold
 				s->off = 1;
 				[self setPressed:s->button on:0];
+				if( buttons[s->button].kind == KIND_LEVEL && level_counting )
+				{
+					level_counting = 0;
+					toast_until = 0;
+				}
 			}
 			break;
 		default:
@@ -954,8 +1085,38 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			if( tap )
 				[self tapTray:b];
 			break;
+		case KIND_LEVEL:
+			if( level_counting && !cancelled && !s->off )
+			{
+				IOS_GoToLevel( level_index );
+				[self closeTray];
+			}
+			else if( tap )
+				[self showToast:@"Hold LEVEL to count chapters"];
+			level_counting = 0;
+			toast_until = 0;
+			break;
 		default:
 			break;
+		}
+
+		// cheat on and flying: two quick taps of JUMP land
+		if( b == BTN_JUMP && cheat_on && !cancelled )
+		{
+			CFTimeInterval now = CACurrentMediaTime();
+
+			if( now - s->t0 < IOSTOUCH_LAND_TAP && !s->done )
+			{
+				if( jump_tap_end > 0 && s->t0 - jump_tap_end < IOSTOUCH_LAND_GAP && IOS_CheatNoclip( ))
+				{
+					IOS_CheatSetNoclip( 0 );
+					Haptic( 0 );
+					[self updateLabels];
+					jump_tap_end = 0;
+				}
+				else jump_tap_end = now;
+			}
+			else jump_tap_end = 0;
 		}
 	}
 
@@ -984,6 +1145,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	held_cmds = 0;
 	look_yaw = look_pitch = 0;
+	level_counting = 0;
+	toast.hidden = YES;
 	[self endStick];
 	[self closeTray];
 }
@@ -992,6 +1155,30 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 - (void)updateHolds
 {
 	CFTimeInterval now = CACurrentMediaTime();
+
+	if( level_counting )
+	{
+		int count = IOS_LevelCount( );
+
+		if( count <= 0 )
+			level_counting = 0;
+		else
+		{
+			if( now >= level_next )
+			{
+				level_index = ( level_index + 1 ) % count;
+				level_next = now + IOSTOUCH_LEVEL_STEP;
+				Haptic( 1 );
+			}
+
+			toast.text = [NSString stringWithFormat:@"Chapter %d of %d: %s", level_index + 1, count, IOS_LevelTitle( level_index )];
+			toast.hidden = NO;
+			toast_until = now + IOSTOUCH_LEVEL_STEP;
+		}
+	}
+
+	if( !toast.hidden && now > toast_until )
+		toast.hidden = YES;
 
 	for( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ )
 	{
@@ -1003,6 +1190,41 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			continue;
 
 		def = &buttons[s->button];
+
+		// cheat on: JUMP or USE held still switch noclip or notarget
+		if(( s->button == BTN_JUMP || s->button == BTN_USE ) && cheat_on )
+		{
+			if( s->moved > IOSTOUCH_CHEAT_STILL )
+			{
+				btn_rings[s->button].strokeEnd = 0.0;
+				continue;
+			}
+
+			f = ( now - s->t0 ) / IOSTOUCH_CHEAT_HOLD;
+			[CATransaction begin];
+			[CATransaction setDisableActions:YES];
+			btn_rings[s->button].strokeEnd = fmin( f, 1.0 );
+			[CATransaction commit];
+
+			if( f >= 1.0 )
+			{
+				s->done = 1;
+				Haptic( 0 );
+				if( s->button == BTN_JUMP )
+				{
+					IOS_CheatSetNoclip( !IOS_CheatNoclip( ));
+					[self showToast:IOS_CheatNoclip( ) ? @"Noclip on: double-tap JUMP to land" : @"Noclip off"];
+				}
+				else
+				{
+					IOS_CheatSetNotarget( !IOS_CheatNotarget( ));
+					[self showToast:IOS_CheatNotarget( ) ? @"Notarget on: enemies ignore you" : @"Notarget off"];
+				}
+				[self updateLabels];
+			}
+			continue;
+		}
+
 		if( def->hold <= 0 )
 			continue;
 
@@ -1030,6 +1252,14 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			gyro_row_open = 1;
 			[self updateShown];
 			[self updateLabels];
+			break;
+		case BTN_CHEAT:
+			[self setCheat:!cheat_on];
+			break;
+		case BTN_TRAY_LEVEL:
+			level_counting = 1;
+			level_index = 0;
+			level_next = now + IOSTOUCH_LEVEL_STEP;
 			break;
 		default:
 			QueueAction( def->arg );
@@ -1189,6 +1419,20 @@ int IOSTouch_PopAction( void )
 	action = actions[actions_head];
 	actions_head = ( actions_head + 1 ) % IOSTOUCH_MAX_ACTIONS;
 	return action;
+}
+
+void IOSTouch_ToggleCheat( void )
+{
+	if( !overlay )
+		return;
+
+	if( !cheat_on && !show_cheat )
+	{
+		show_cheat = 1;
+		[[NSUserDefaults standardUserDefaults] setBool:YES forKey:KEY_SHOW_CHEAT];
+	}
+
+	[overlay setCheat:!cheat_on];
 }
 
 void IOSTouch_TakeLook( float *yaw, float *pitch )

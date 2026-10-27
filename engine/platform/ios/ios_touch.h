@@ -62,8 +62,24 @@ int IOSTouch_PopAction( void );
 // (yaw: + turns left, pitch: + looks down)
 void IOSTouch_TakeLook( float *yaw, float *pitch );
 
+// The console word "sithewok": switches the cheat, and shows its button
+void IOSTouch_ToggleCheat( void );
+
 // engine side (ios_touch_glue.c)
 void IOS_TouchFrame( void );
 void IOS_TouchGetMove( float *pitch, float *yaw );
+
+// engine side (ios_cheats.c), single player only
+void IOS_CheatInit( void );
+void IOS_CheatFrame( void );
+int IOS_CheatAllowed( void );
+void IOS_CheatSet( int on );
+int IOS_CheatNoclip( void );
+int IOS_CheatNotarget( void );
+void IOS_CheatSetNoclip( int on );
+void IOS_CheatSetNotarget( int on );
+int IOS_LevelCount( void );
+const char *IOS_LevelTitle( int i );
+void IOS_GoToLevel( int i );
 
 #endif // IOS_TOUCH_H
