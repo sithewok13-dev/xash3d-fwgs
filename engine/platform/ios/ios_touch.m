@@ -943,7 +943,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 - (void)setPressed:(int)i on:(int)on
 {
 	btn_views[i].alpha = on ? 1.0 : IOSTOUCH_IDLE_ALPHA;
-	btn_views[i].backgroundColor = [UIColor colorWithWhite:1.0 alpha:on ? 0.4 : 0.15];
+	if( !( i == BTN_FLASH && flash_group ))
+		btn_views[i].backgroundColor = [UIColor colorWithWhite:1.0 alpha:on ? 0.4 : 0.15];
 
 	if( !on && btn_rings[i] )
 		btn_rings[i].strokeEnd = 0.0;
@@ -1685,7 +1686,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 
 	// the beam to the left of the lamp, as on the HUD, fitted in the circle
 	total = w[IOSTOUCH_FLASH_EMPTY] + ( px[IOSTOUCH_FLASH_BEAM] ? w[IOSTOUCH_FLASH_BEAM] : 0 );
-	k = MIN( r * 1.55 / total, r * 1.0 / MAX( h[IOSTOUCH_FLASH_EMPTY], 1 ));
+	k = MIN( r * 2.6 / total, r * 1.3 / MAX( h[IOSTOUCH_FLASH_EMPTY], 1 ));
 
 	flash_group = [[UIView alloc] initWithFrame:CGRectMake( 0, 0, total * k, h[IOSTOUCH_FLASH_EMPTY] * k )];
 	flash_group.center = CGPointMake( r, r );
@@ -1711,6 +1712,13 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 		[flash_group addSubview:flash_beam];
 	}
 
+	// no ring: the lamp itself is the button, glowing like the HUD's
+	flash_group.layer.shadowColor = HudOrange( 1.0 ).CGColor;
+	flash_group.layer.shadowRadius = 5;
+	flash_group.layer.shadowOpacity = 0.85;
+	flash_group.layer.shadowOffset = CGSizeZero;
+	btn_views[BTN_FLASH].backgroundColor = [UIColor clearColor];
+	btn_views[BTN_FLASH].layer.borderWidth = 0.0;
 	btn_labels[BTN_FLASH].hidden = YES;
 	[btn_views[BTN_FLASH] addSubview:flash_group];
 	flash_shown_on = flash_shown_bat = -1;
@@ -1743,8 +1751,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	[CATransaction commit];
 
 	flash_beam.hidden = !on;
-	btn_lit[BTN_FLASH] = on;
-	btn_views[BTN_FLASH].layer.borderColor = on ? HudOrange( 0.9 ).CGColor : [UIColor colorWithWhite:1.0 alpha:0.45].CGColor;
+	flash_group.layer.shadowOpacity = on ? 1.0 : 0.6;
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event

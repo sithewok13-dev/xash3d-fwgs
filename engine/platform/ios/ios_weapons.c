@@ -503,6 +503,10 @@ static void IOS_FlashLoad( void )
 		if( !IOS_FindHudSprite( "sprites/hud.txt", names[i], sprite, sizeof( sprite ), part->rect ))
 			continue;
 
+		// (a picture this size is a HUD icon; anything else is a misread)
+		if( part->rect[2] <= 0 || part->rect[3] <= 0 || part->rect[2] > 256 || part->rect[3] > 256 )
+			continue;
+
 		Q_snprintf( part->sprite, sizeof( part->sprite ), "sprites/%s.spr", sprite );
 		part->pixels = IOS_LoadSpriteRect( part->sprite, part->rect[0], part->rect[1], part->rect[2], part->rect[3] );
 		part->found = true;
@@ -543,9 +547,12 @@ int IOS_HudHidesSprite( const char *sprite, int left, int top, int right, int bo
 		if( !part->found || Q_stricmp( sprite, part->sprite ))
 			continue;
 
-		// the battery bar is drawn as a part of flash_full
-		if( left >= part->rect[0] && right <= part->rect[0] + part->rect[2]
-			&& top >= part->rect[1] && bottom <= part->rect[1] + part->rect[3] )
+		// exactly those pictures; the battery's charge is drawn as the
+		// right part of flash_full (same top, bottom and right edges)
+		if( top != part->rect[1] || bottom != part->rect[1] + part->rect[3] || right != part->rect[0] + part->rect[2] )
+			continue;
+
+		if( left == part->rect[0] || ( i == IOSTOUCH_FLASH_FULL && left > part->rect[0] && left < right ))
 			return 1;
 	}
 

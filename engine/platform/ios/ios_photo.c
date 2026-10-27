@@ -25,6 +25,7 @@ GNU General Public License for more details.
 #include "server.h"
 #include "pm_defs.h"
 #include "studio.h"
+#include "cl_tent.h"
 #include "ios_touch.h"
 
 #define PHOTO_MAX_PENDING 16
@@ -42,6 +43,8 @@ GNU General Public License for more details.
 #define FREEZE_MAX_PITCH 80.0f
 #define PHOTO_FOV_MIN    15.0f
 #define PHOTO_FOV_MAX    110.0f
+#define PHOTO_LIGHT_KEY  -7331   // the camera's flash (dynamic and entity light)
+#define PHOTO_LIGHT_RADIUS 320.0f
 #define FREEZE_MAX_PAN   256.0f
 
 typedef enum
@@ -90,6 +93,8 @@ static struct
 	int pose_seq;
 	int pose_frame;
 } photo;
+
+static void IOS_PhotoFlashOff( void );
 
 static qboolean IOS_PhotoSinglePlayer( void )
 {
@@ -276,6 +281,16 @@ static int IOS_PhotoFindSequence( model_t *model, const char *name, int *numfram
 	return -1;
 }
 
+static const char *IOS_PhotoSequenceName( model_t *model, int seq )
+{
+	studiohdr_t *hdr;
+
+	if( !model || model->type != mod_studio || !( hdr = (studiohdr_t *)Mod_StudioExtradata( model )) || seq < 0 || seq >= hdr->numseq )
+		return "";
+
+	return ((mstudioseqdesc_t *)((byte *)hdr + hdr->seqindex ))[seq].label;
+}
+
 // a new random pose, different from the last
 static void IOS_PhotoPickPose( void )
 {
@@ -286,7 +301,7 @@ static void IOS_PhotoPickPose( void )
 	if( !player )
 		return;
 
-	for( tries = 0; tries < 16; tries++ )
+	for( tries = 0; tries < 24; tries++ )
 	{
 		int seq = IOS_PhotoFindSequence( player->model, photo_poses[COM_RandomLong( 0, ARRAYSIZE( photo_poses ) - 1 )], &numframes );
 
@@ -295,18 +310,59 @@ static void IOS_PhotoPickPose( void )
 			photo.pose_seq = seq;
 			// somewhere in the middle of the move, where it's most a pose
 			photo.pose_frame = COM_RandomLong( 64, 192 );
+			Con_Reportf( "iOS photo: pose %s (%d) of %s\n", IOS_PhotoSequenceName( player->model, seq ), seq, player->model->name );
 			return;
 		}
 	}
+
+	// a model without those names: any of its moves but dying
+	{
+		studiohdr_t *hdr = player->model && player->model->type == mod_studio ? (studiohdr_t *)Mod_StudioExtradata( player->model ) : NULL;
+
+		for( tries = 0; hdr && hdr->numseq > 1 && tries < 24; tries++ )
+		{
+			int seq = COM_RandomLong( 1, hdr->numseq - 1 );
+			const char *name = IOS_PhotoSequenceName( player->model, seq );
+
+			if( Q_stristr( name, "die" ) || Q_stristr( name, "death" ) || Q_stristr( name, "dead" )
+				|| Q_stristr( name, "head" ) || Q_stristr( name, "gut" ) || Q_stristr( name, "dummy" ))
+				continue;
+
+			photo.pose_seq = seq;
+			photo.pose_frame = COM_RandomLong( 64, 192 );
+			Con_Reportf( "iOS photo: pose %s (%d) of %s, any move\n", name, seq, player->model->name );
+			return;
+		}
+	}
+
+	Con_Reportf( "iOS photo: no pose for %s\n", player->model ? player->model->name : "(no model)" );
 }
 
 // held while the camera is up: the HUD's renderer draws the player from
 // the entity's sequence and the player state's gait (legs) sequence
-static void IOS_PhotoApplyPose( void )
+static void IOS_PhotoApplyPose( const vec3_t camera )
 {
 	cl_entity_t *player = CL_GetLocalPlayer( );
 
-	if( !player || photo.pose_seq < 0 )
+	if( !player || photo.mode != CAM_SELFIE )
+		return;
+
+	// the whole body turns to the camera (the legs' own turning is off below)
+	{
+		vec3_t dir, angles;
+
+		VectorSubtract( camera, player->origin, dir );
+		VectorAngles( dir, angles );
+		player->angles[PITCH] = player->curstate.angles[PITCH] = 0.0f;
+		player->angles[YAW] = player->curstate.angles[YAW] = angles[YAW];
+		player->latched.prevangles[YAW] = angles[YAW];
+		player->curstate.gaitsequence = 0;
+
+		if( cl.frames[cl.parsecountmod].valid )
+			cl.frames[cl.parsecountmod].playerstate[cl.playernum].gaitsequence = 0;
+	}
+
+	if( photo.pose_seq < 0 )
 		return;
 
 	player->curstate.sequence = photo.pose_seq;
@@ -347,6 +403,7 @@ void IOS_PhotoCameraEnd( void )
 		return;
 
 	IOS_PhotoUnpose( );
+	IOS_PhotoFlashOff( );
 	IOS_PhotoUnpause( );
 	photo.mode = CAM_NONE;
 }
@@ -504,6 +561,47 @@ int IOS_PhotoBusy( void )
 	return photo.current || photo.num_pending;
 }
 
+// ---------------------------------------------------------------- the flash
+
+// selfies and the cinematic burst light the scene from the camera, like a
+// phone's flash: a dynamic light for the world and an entity light for the
+// models (the player's face)
+static void IOS_PhotoFlash( const vec3_t camera )
+{
+	dlight_t *dl;
+
+	if( photo.mode != CAM_SELFIE && photo.mode != CAM_ORBIT )
+		return;
+
+	if(( dl = CL_AllocDlight( PHOTO_LIGHT_KEY )))
+	{
+		VectorCopy( camera, dl->origin );
+		dl->radius = PHOTO_LIGHT_RADIUS;
+		dl->color.r = 255; dl->color.g = 248; dl->color.b = 235;
+		dl->die = cl.time + 1.0f;
+		dl->decay = 0.0f;
+	}
+
+	if(( dl = CL_AllocElight( PHOTO_LIGHT_KEY )))
+	{
+		VectorCopy( camera, dl->origin );
+		dl->radius = PHOTO_LIGHT_RADIUS;
+		dl->color.r = 255; dl->color.g = 248; dl->color.b = 235;
+		dl->die = cl.time + 1.0f;
+		dl->decay = 0.0f;
+	}
+}
+
+static void IOS_PhotoFlashOff( void )
+{
+	dlight_t *dl;
+
+	if(( dl = CL_AllocDlight( PHOTO_LIGHT_KEY )))
+		dl->die = dl->radius = 0.0f;
+	if(( dl = CL_AllocElight( PHOTO_LIGHT_KEY )))
+		dl->die = dl->radius = 0.0f;
+}
+
 // ---------------------------------------------------------------- engine hooks
 
 // after the game client's pfnCalcRefdef: the photo camera's view
@@ -554,7 +652,8 @@ void IOS_PhotoCalcRefdef( ref_params_t *rp )
 	cl.local.scr_fov = photo.fov;
 
 	IOS_PhotoPose( camera );
-	IOS_PhotoApplyPose( );
+	IOS_PhotoApplyPose( camera );
+	IOS_PhotoFlash( camera );
 }
 
 int IOS_PhotoThirdPerson( void )
