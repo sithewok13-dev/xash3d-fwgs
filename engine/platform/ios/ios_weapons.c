@@ -44,6 +44,10 @@ typedef struct
 
 static ios_weapon_t weapons[MAX_IOS_WEAPONS];
 static int ammo[MAX_IOS_AMMO];
+
+// the flashlight, for the LIGHT button
+static qboolean flash_on;
+static int flash_battery = 100;
 static int current_id = -1;
 static char weapons_game[MAX_QPATH];
 
@@ -119,6 +123,15 @@ void IOS_WeaponsUserMsg( const char *name, int size, const void *data )
 		}
 		else if( !state && id <= 0 )
 			current_id = -1;
+	}
+	else if( !Q_strcmp( name, "Flashlight" ))
+	{
+		flash_on = ReadByte( &p, end ) != 0;
+		flash_battery = ReadByte( &p, end );
+	}
+	else if( !Q_strcmp( name, "FlashBat" ))
+	{
+		flash_battery = ReadByte( &p, end );
 	}
 	else if( !Q_strcmp( name, "AmmoX" ))
 	{
@@ -376,12 +389,53 @@ done:
 	return out;
 }
 
+// finds an entry of a HUD sprite list (sprites/hud.txt, sprites/weapon_*.txt):
+// "count", then lines of: name res sprite x y w h; the largest res up to 640
+static qboolean IOS_FindHudSprite( const char *txt, const char *want, char *sprite, size_t size, int *rect )
+{
+	char token[64], *file, *pfile;
+	int count, best_res = 0;
+
+	pfile = file = (char *)FS_LoadFile( txt, NULL, false );
+	if( !file )
+		return false;
+
+	sprite[0] = 0;
+	pfile = COM_ParseFile( pfile, token, sizeof( token ));
+	count = Q_atoi( token );
+
+	while( count-- > 0 && pfile )
+	{
+		char name[32], spr[64];
+		int res, r[4], i;
+
+		pfile = COM_ParseFile( pfile, name, sizeof( name ));
+		pfile = COM_ParseFile( pfile, token, sizeof( token ));
+		res = Q_atoi( token );
+		pfile = COM_ParseFile( pfile, spr, sizeof( spr ));
+		for( i = 0; i < 4; i++ )
+		{
+			pfile = COM_ParseFile( pfile, token, sizeof( token ));
+			r[i] = Q_atoi( token );
+		}
+
+		if( !Q_stricmp( name, want ) && res > best_res && res <= 640 )
+		{
+			best_res = res;
+			Q_strncpy( sprite, spr, size );
+			memcpy( rect, r, sizeof( r ));
+		}
+	}
+
+	Mem_Free( file );
+	return sprite[0] != 0;
+}
+
 const unsigned char *IOS_WeaponIcon( int id, int *w, int *h )
 {
 	ios_weapon_t *wp;
-	char path[MAX_QPATH], token[64], sprite[64];
-	char *file, *pfile;
-	int count, best_res = 0, bx = 0, by = 0, bw = 0, bh = 0;
+	char path[MAX_QPATH], sprite[64];
+	int rect[4];
 
 	if( id <= 0 || id >= MAX_IOS_WEAPONS || !weapons[id].known )
 		return NULL;
@@ -395,53 +449,105 @@ const unsigned char *IOS_WeaponIcon( int id, int *w, int *h )
 	}
 
 	wp->icon_tried = true;
-	sprite[0] = 0;
 
+	// the selected-weapon picture
 	Q_snprintf( path, sizeof( path ), "sprites/%s.txt", wp->name );
-	pfile = file = (char *)FS_LoadFile( path, NULL, false );
-	if( !file )
-		return NULL;
-
-	// "count", then lines of: name res sprite x y w h
-	pfile = COM_ParseFile( pfile, token, sizeof( token ));
-	count = Q_atoi( token );
-
-	while( count-- > 0 && pfile )
-	{
-		char name[32], spr[64];
-		int res, x, y, sw, sh;
-
-		pfile = COM_ParseFile( pfile, name, sizeof( name ));
-		pfile = COM_ParseFile( pfile, token, sizeof( token )); res = Q_atoi( token );
-		pfile = COM_ParseFile( pfile, spr, sizeof( spr ));
-		pfile = COM_ParseFile( pfile, token, sizeof( token )); x = Q_atoi( token );
-		pfile = COM_ParseFile( pfile, token, sizeof( token )); y = Q_atoi( token );
-		pfile = COM_ParseFile( pfile, token, sizeof( token )); sw = Q_atoi( token );
-		pfile = COM_ParseFile( pfile, token, sizeof( token )); sh = Q_atoi( token );
-
-		// the selected-weapon picture, at the largest HUD size there is
-		if( !Q_stricmp( name, "weapon_s" ) && res > best_res )
-		{
-			best_res = res;
-			Q_strncpy( sprite, spr, sizeof( sprite ));
-			bx = x; by = y; bw = sw; bh = sh;
-		}
-	}
-
-	Mem_Free( file );
-
-	if( !sprite[0] )
+	if( !IOS_FindHudSprite( path, "weapon_s", sprite, sizeof( sprite ), rect ))
 		return NULL;
 
 	Q_snprintf( path, sizeof( path ), "sprites/%s.spr", sprite );
-	wp->icon = IOS_LoadSpriteRect( path, bx, by, bw, bh );
+	wp->icon = IOS_LoadSpriteRect( path, rect[0], rect[1], rect[2], rect[3] );
 	if( wp->icon )
 	{
-		wp->icon_w = bw;
-		wp->icon_h = bh;
+		wp->icon_w = rect[2];
+		wp->icon_h = rect[3];
 	}
 
 	*w = wp->icon_w;
 	*h = wp->icon_h;
 	return wp->icon;
+}
+
+// ---------------------------------------------------------------- flashlight
+
+typedef struct
+{
+	char sprite[MAX_QPATH]; // sprites/<name>.spr
+	int rect[4];            // x y w h
+	byte *pixels;
+	qboolean found;
+} ios_hud_part_t;
+
+static ios_hud_part_t flash_parts[IOSTOUCH_FLASH_PARTS];
+static char flash_game[MAX_QPATH];
+
+static void IOS_FlashLoad( void )
+{
+	static const char *names[IOSTOUCH_FLASH_PARTS] = { "flash_empty", "flash_full", "flash_beam" };
+	int i;
+
+	if( !Q_stricmp( flash_game, GI->gamefolder ))
+		return;
+
+	Q_strncpy( flash_game, GI->gamefolder, sizeof( flash_game ));
+
+	for( i = 0; i < IOSTOUCH_FLASH_PARTS; i++ )
+	{
+		ios_hud_part_t *part = &flash_parts[i];
+		char sprite[64];
+
+		if( part->pixels )
+			Mem_Free( part->pixels );
+		memset( part, 0, sizeof( *part ));
+
+		if( !IOS_FindHudSprite( "sprites/hud.txt", names[i], sprite, sizeof( sprite ), part->rect ))
+			continue;
+
+		Q_snprintf( part->sprite, sizeof( part->sprite ), "sprites/%s.spr", sprite );
+		part->pixels = IOS_LoadSpriteRect( part->sprite, part->rect[0], part->rect[1], part->rect[2], part->rect[3] );
+		part->found = true;
+	}
+}
+
+const unsigned char *IOS_FlashlightIcon( int part, int *w, int *h )
+{
+	if( part < 0 || part >= IOSTOUCH_FLASH_PARTS )
+		return NULL;
+
+	IOS_FlashLoad( );
+	*w = flash_parts[part].rect[2];
+	*h = flash_parts[part].rect[3];
+	return flash_parts[part].pixels;
+}
+
+void IOS_FlashlightState( int *on, int *battery )
+{
+	*on = flash_on;
+	*battery = bound( 0, flash_battery, 100 );
+}
+
+// the HUD's own flashlight is left out: the LIGHT button shows it instead
+int IOS_HudHidesSprite( const char *sprite, int left, int top, int right, int bottom )
+{
+	int i;
+
+	if( cls.state != ca_active || !IOS_TouchShown( ))
+		return 0;
+
+	IOS_FlashLoad( );
+
+	for( i = 0; i < IOSTOUCH_FLASH_PARTS; i++ )
+	{
+		const ios_hud_part_t *part = &flash_parts[i];
+
+		if( !part->found || Q_stricmp( sprite, part->sprite ))
+			continue;
+
+		// the battery bar is drawn as a part of flash_full
+		if( left >= part->rect[0] && right <= part->rect[0] + part->rect[2]
+			&& top >= part->rect[1] && bottom <= part->rect[1] + part->rect[3] )
+			return 1;
+	}
+
+	return 0;
 }

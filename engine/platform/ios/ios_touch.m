@@ -487,6 +487,13 @@ static void SaveGyro( void )
 	CAShapeLayer *wheel_slices[IOSTOUCH_WHEEL_MAX];
 	UIView *wheel_cells[IOSTOUCH_WHEEL_MAX];
 	NSMutableDictionary *icon_cache;
+
+	// LIGHT: the game's flashlight picture, filled to the battery, the
+	// beam lit while it's on
+	UIView *flash_group;
+	UIImageView *flash_empty, *flash_full, *flash_beam;
+	CAShapeLayer *flash_mask;
+	int flash_shown_on, flash_shown_bat;
 	CGPoint stick_center;
 	CGFloat run_dist;            // 0: no marker
 	int running;
@@ -720,7 +727,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	for( int i = 0; i < BTN_COUNT; i++ )
 	{
-		if( i == BTN_CHEAT )
+		if( i == BTN_CHEAT || ( i == BTN_FLASH && flash_group ))
 			continue;
 
 		btn_views[i].layer.borderColor = btn_lit[i] ?
@@ -1631,6 +1638,115 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 	IOS_HoldGame( 0 );
 }
 
+// ---------------------------------------------------------------- LIGHT
+
+static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
+{
+	UIImage *img = nil;
+	CGColorSpaceRef cs;
+	CFDataRef data;
+	CGDataProviderRef prov;
+	CGImageRef cg;
+
+	if( !rgba || w <= 0 || h <= 0 )
+		return nil;
+
+	cs = CGColorSpaceCreateDeviceRGB();
+	data = CFDataCreate( NULL, rgba, (CFIndex)w * h * 4 );
+	prov = CGDataProviderCreateWithCFData( data );
+	cg = CGImageCreate( w, h, 8, 32, (size_t)w * 4, cs, (CGBitmapInfo)kCGImageAlphaPremultipliedLast, prov, NULL, false, kCGRenderingIntentDefault );
+	if( cg )
+	{
+		// drawn in the button's colour from its shape alone
+		img = [[UIImage imageWithCGImage:cg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+		CGImageRelease( cg );
+	}
+	CGDataProviderRelease( prov );
+	CFRelease( data );
+	CGColorSpaceRelease( cs );
+	return img;
+}
+
+// made once the game's pictures can be read; until then LIGHT is a word
+- (void)setupFlashlight
+{
+	const unsigned char *px[IOSTOUCH_FLASH_PARTS];
+	int w[IOSTOUCH_FLASH_PARTS] = { 0 }, h[IOSTOUCH_FLASH_PARTS] = { 0 };
+	CGFloat r = buttons[BTN_FLASH].radius, k, total;
+
+	if( flash_group )
+		return;
+
+	for( int i = 0; i < IOSTOUCH_FLASH_PARTS; i++ )
+		px[i] = IOS_FlashlightIcon( i, &w[i], &h[i] );
+
+	if( !px[IOSTOUCH_FLASH_EMPTY] || !px[IOSTOUCH_FLASH_FULL] )
+		return;
+
+	// the beam to the left of the lamp, as on the HUD, fitted in the circle
+	total = w[IOSTOUCH_FLASH_EMPTY] + ( px[IOSTOUCH_FLASH_BEAM] ? w[IOSTOUCH_FLASH_BEAM] : 0 );
+	k = MIN( r * 1.55 / total, r * 1.0 / MAX( h[IOSTOUCH_FLASH_EMPTY], 1 ));
+
+	flash_group = [[UIView alloc] initWithFrame:CGRectMake( 0, 0, total * k, h[IOSTOUCH_FLASH_EMPTY] * k )];
+	flash_group.center = CGPointMake( r, r );
+	flash_group.userInteractionEnabled = NO;
+
+	CGRect lamp = CGRectMake(( total - w[IOSTOUCH_FLASH_EMPTY] ) * k, 0, w[IOSTOUCH_FLASH_EMPTY] * k, h[IOSTOUCH_FLASH_EMPTY] * k );
+
+	flash_empty = [[UIImageView alloc] initWithImage:TemplateImage( px[IOSTOUCH_FLASH_EMPTY], w[IOSTOUCH_FLASH_EMPTY], h[IOSTOUCH_FLASH_EMPTY] )];
+	flash_empty.frame = lamp;
+	flash_empty.alpha = 0.45;
+	[flash_group addSubview:flash_empty];
+
+	flash_full = [[UIImageView alloc] initWithImage:TemplateImage( px[IOSTOUCH_FLASH_FULL], w[IOSTOUCH_FLASH_FULL], h[IOSTOUCH_FLASH_FULL] )];
+	flash_full.frame = lamp;
+	flash_mask = [[CAShapeLayer layer] retain];
+	flash_full.layer.mask = flash_mask;
+	[flash_group addSubview:flash_full];
+
+	if( px[IOSTOUCH_FLASH_BEAM] )
+	{
+		flash_beam = [[UIImageView alloc] initWithImage:TemplateImage( px[IOSTOUCH_FLASH_BEAM], w[IOSTOUCH_FLASH_BEAM], h[IOSTOUCH_FLASH_BEAM] )];
+		flash_beam.frame = CGRectMake( 0, ( h[IOSTOUCH_FLASH_EMPTY] - h[IOSTOUCH_FLASH_BEAM] ) * 0.5 * k, w[IOSTOUCH_FLASH_BEAM] * k, h[IOSTOUCH_FLASH_BEAM] * k );
+		[flash_group addSubview:flash_beam];
+	}
+
+	btn_labels[BTN_FLASH].hidden = YES;
+	[btn_views[BTN_FLASH] addSubview:flash_group];
+	flash_shown_on = flash_shown_bat = -1;
+}
+
+- (void)updateFlashlight
+{
+	int on = 0, bat = 100;
+	UIColor *color;
+
+	[self setupFlashlight];
+	if( !flash_group )
+		return;
+
+	IOS_FlashlightState( &on, &bat );
+	if( on == flash_shown_on && bat == flash_shown_bat )
+		return;
+
+	flash_shown_on = on;
+	flash_shown_bat = bat;
+
+	// as on the HUD: red under 20%, the charge filling from the right
+	color = bat < 20 ? [UIColor colorWithRed:1.0 green:0.2 blue:0.15 alpha:1.0] : HudOrange( 1.0 );
+	flash_empty.tintColor = flash_full.tintColor = flash_beam.tintColor = color;
+
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	CGFloat w = flash_full.bounds.size.width, h = flash_full.bounds.size.height;
+	flash_mask.path = [UIBezierPath bezierPathWithRect:CGRectMake( w * ( 1.0 - bat / 100.0 ), 0, w * bat / 100.0, h )].CGPath;
+	[CATransaction commit];
+
+	flash_beam.hidden = !on;
+	btn_lit[BTN_FLASH] = on;
+	btn_views[BTN_FLASH].layer.borderColor = on ? HudOrange( 0.9 ).CGColor : [UIColor colorWithWhite:1.0 alpha:0.45].CGColor;
+}
+
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
 	for( UITouch *t in touches )
@@ -2184,10 +2300,18 @@ void IOSTouch_Frame( void *window, int ingame )
 			[overlay layoutButtons];
 
 		if( overlay_shown )
+		{
 			[overlay updateHolds];
+			[overlay updateFlashlight];
+		}
 
 		GyroFrame();
 	}
+}
+
+int IOS_TouchShown( void )
+{
+	return overlay_shown;
 }
 
 unsigned int IOSTouch_HeldCommands( void )

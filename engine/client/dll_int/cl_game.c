@@ -1567,6 +1567,12 @@ pfnSPR_DrawAdditive
 */
 static void GAME_EXPORT pfnSPR_DrawAdditive( int frame, int x, int y, const wrect_t *prc )
 {
+#if XASH_IOS
+	// the flashlight shows on the touch controls' LIGHT button instead
+	if( clgame.ds.pSprite && prc && IOS_HudHidesSprite( clgame.ds.pSprite->name, prc->left, prc->top, prc->right, prc->bottom ))
+		return;
+#endif
+
 #if 1 // REFTODO
 	ref.dllFuncs.GL_SetRenderMode( kRenderTransAdd );
 #else

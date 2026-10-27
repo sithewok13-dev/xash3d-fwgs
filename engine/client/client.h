@@ -922,6 +922,7 @@ static inline model_t *CL_ModelHandle( int modelindex )
 #if XASH_IOS
 int IOS_PhotoThirdPerson( void ); // engine/platform/ios/ios_photo.c
 void IOS_WeaponsUserMsg( const char *name, int size, const void *data ); // ios_weapons.c
+int IOS_HudHidesSprite( const char *sprite, int left, int top, int right, int bottom ); // ios_weapons.c
 #endif
 
 static inline qboolean CL_IsThirdPerson( void )

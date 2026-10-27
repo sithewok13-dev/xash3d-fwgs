@@ -121,6 +121,15 @@ void IOS_WeaponNext( void );
 const char *IOS_WeaponDisplayName( const char *classname );
 const unsigned char *IOS_WeaponIcon( int id, int *w, int *h );
 
+// the flashlight's HUD pictures and state, for the LIGHT button
+enum { IOSTOUCH_FLASH_EMPTY, IOSTOUCH_FLASH_FULL, IOSTOUCH_FLASH_BEAM, IOSTOUCH_FLASH_PARTS };
+const unsigned char *IOS_FlashlightIcon( int part, int *w, int *h );
+void IOS_FlashlightState( int *on, int *battery );
+int IOS_HudHidesSprite( const char *sprite, int left, int top, int right, int bottom );
+
+// whether the touch controls are up (ios_touch.m)
+int IOS_TouchShown( void );
+
 // holds a single player game still (the wheel), ios_photo.c
 void IOS_HoldGame( int on );
 
