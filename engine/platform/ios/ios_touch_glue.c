@@ -15,6 +15,7 @@ GNU General Public License for more details.
 
 #include "common.h"
 #include "client.h"
+#include "keydefs.h"
 #include "ios_touch.h"
 
 static const char *ios_touch_cmds[IOSTOUCH_CMD_COUNT] =
