@@ -19,7 +19,12 @@ IPA_NAME=${IPA_NAME:-Xash3D-iOS-unsigned.ipa}
 
 mkdir -p build
 ./waf configure --enable-lto --ios build install --destdir=build/ios 2>&1 | tee build/waf.log
-[ "${PIPESTATUS[0]}" -eq 0 ] || { cat build/config.log; exit 1; }
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+	# compiler errors first, then the end of the log (configure failures show there)
+	grep -E "error:|Error" build/waf.log | head -60 || true
+	tail -40 build/waf.log
+	exit 1
+fi
 
 if [ ! -d build/SDL2.framework ]; then
 	cp -R /Library/Frameworks/SDL2.framework build/
