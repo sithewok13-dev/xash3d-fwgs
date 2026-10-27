@@ -55,3 +55,20 @@ to sign; other branches keep it as a run artifact.
 The iOS code is in `engine/platform/ios` (launcher, touch overlay, cheats, photo mode).
 The engine hooks are small and marked `#if XASH_IOS`, in `engine/client/input/input.c`,
 `engine/client/cl_view.c` and `engine/client/client.h`.
+
+## Ideas, not implemented
+
+Possible additions to the cheat tray, all built into the engine or the
+game libraries (no gameplay changes needed). On hold until decided.
+
+- Long Jump Module: `give item_longjump`. Half-Life only; `impulse 101`
+  doesn't include it.
+- Slow motion: `sys_timescale` (e.g. 0.3), a switch; pairs with the photo
+  mode.
+- Low gravity: `sv_gravity` (800 normally), a switch.
+- Spawn a soldier: `impulse 76`, a human grunt in front of the player.
+- Remove what's under the crosshair: `impulse 203`, a way out when stuck
+  on something or a scripted scene breaks.
+
+Left out: infinite ammo (no built-in cheat; it would mean changing the
+game libraries) and the debugging impulses (AI, textures, node graph).
