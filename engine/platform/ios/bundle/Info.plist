@@ -50,6 +50,8 @@
 	<true/>
 	<key>MinimumOSVersion</key>
 	<string>12.0</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Multiplayer: hosting and joining games with friends on your Wi-Fi.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Photo mode saves your photos and selfies to Photos.</string>
 	<key>NSMotionUsageDescription</key>

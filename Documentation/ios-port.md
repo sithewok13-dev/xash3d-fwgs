@@ -55,3 +55,83 @@ to sign; other branches keep it as a run artifact.
 The iOS code is in `engine/platform/ios` (launcher, touch overlay, cheats, photo mode).
 The engine hooks are small and marked `#if XASH_IOS`, in `engine/client/input/input.c`,
 `engine/client/cl_view.c` and `engine/client/client.h`.
+
+## Ideas, not implemented
+
+Possible additions to the cheat tray, all built into the engine or the
+game libraries (no gameplay changes needed). On hold until decided.
+
+- Long Jump Module: `give item_longjump`. Half-Life only; `impulse 101`
+  doesn't include it.
+- Slow motion: `sys_timescale` (e.g. 0.3), a switch; pairs with the photo
+  mode.
+- Low gravity: `sv_gravity` (800 normally), a switch.
+- Spawn a soldier: `impulse 76`, a human grunt in front of the player.
+- Remove what's under the crosshair: `impulse 203`, a way out when stuck
+  on something or a scripted scene breaks.
+
+Left out: infinite ammo (no built-in cheat; it would mean changing the
+game libraries) and the debugging impulses (AI, textures, node graph).
+
+## Multiplayer plan
+
+Decided: play with friends on the same Wi-Fi and over the internet
+through Tailscale; all the classic modes plus the popular later ones; a
+co-op mode; Counter-Strike 1.6 as a fourth game in the launcher; no bots
+for now. Single player stays vanilla, and every multiplayer change must
+be revertible.
+
+Order:
+
+1. Classic modes over Wi-Fi and Tailscale (Half-Life deathmatch and team
+   deathmatch, Opposing Force deathmatch and CTF). The game's server
+   browser adds servers by address and keeps favorites; the launcher
+   shows the device's Wi-Fi and Tailscale addresses. LAN discovery
+   (broadcast) on iOS 14+ needs Apple's multicast entitlement
+   (com.apple.developer.networking.multicast), which changes the signing
+   profile: until then, join by address. A phone host freezes the game
+   for everyone when its app goes to the background; a Mac or PC on
+   Tailscale can run a dedicated server instead.
+2. Co-op.
+3. The extra modes.
+4. Counter-Strike.
+
+How it stays revertible: extra modes live in their own game folder and
+library, never in valve/gearbox/bshift; the build script builds them as
+optional (HLSDK_OPTIONAL_GAMES, empty to drop them), and a mode that
+fails to build is left out instead of failing the build.
+
+### Extra modes
+
+- Adrenaline Gamer (hlsdk-portable's aghl branch, game folder "ag"):
+  free for all, team play, arena (1v1, winner stays), last man standing,
+  instagib, CTF and domination on Half-Life maps, plus arcade and
+  shotgun/crossbow. Needs AG's own data folder (flag model, settings).
+- Still to add on top: Gun Game, low gravity (sv_gravity only),
+  weapon-restricted deathmatch (crowbar only, snarks only...).
+
+### Co-op
+
+No co-op in hlsdk-portable. The best existing open-source base is
+SevenKewp (github.com/wootguy/SevenKewp): a generic co-op mod faithful to
+Half-Life, built for Sven Co-op maps, on halflife-updated (2021), under
+the Half-Life SDK license. About 320 server source files, Windows-first
+CMake. It hooks a custom ReHLDS only as a dedicated server; on a listen
+server one helper (sprite lookups through ReHLDS) would crash and needs
+a fallback. A port is big but would bring level changes with several
+players, respawns and scripted scenes already handled. Alternative: our
+own co-op on hlsdk-portable, chapter by chapter. Opposing Force and Blue
+Shift co-op come after Half-Life's.
+
+### Counter-Strike 1.6
+
+As a module (a fourth launcher entry): it needs the valve folder too,
+which a separate app would make you copy twice. Open-source client for
+this engine (cs16-client, used on Android) and server (ReGameDLL_CS);
+data from your Steam copy (cstrike). Its own touch layout: buy menu,
+team/class choice, scoreboard; plant and defuse on USE; no LIGHT.
+
+### Team Fortress Classic
+
+Not possible for now: its game code was never released and there is no
+open-source rewrite (FortressOne is the Quake version).

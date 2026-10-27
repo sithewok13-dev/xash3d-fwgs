@@ -62,6 +62,10 @@ int IOSTouch_PopAction( void );
 // (yaw: + turns left, pitch: + looks down)
 void IOSTouch_TakeLook( float *yaw, float *pitch );
 
+// Keeps the screen on while a game runs (a multiplayer host freezes for
+// everyone if the phone locks)
+void IOSTouch_KeepAwake( int on );
+
 // The console word "sithewok": switches the cheat, and shows its button
 void IOSTouch_ToggleCheat( void );
 

@@ -81,6 +81,9 @@ void IOS_TouchFrame( void )
 
 	IOS_CheatFrame( );
 	IOSTouch_Frame( host.hWnd, ingame );
+	// a game running (not the menu's background map), or hosting one, menus
+	// over it included
+	IOSTouch_KeepAwake(( cls.state == ca_active && !cl.background ) || ( SV_Active( ) && SV_GetMaxClients( ) > 1 ));
 
 	held = ingame ? IOSTouch_HeldCommands( ) : 0;
 	changed = held ^ ios_touch_held;

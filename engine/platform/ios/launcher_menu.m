@@ -21,6 +21,10 @@ GNU General Public License for more details.
 #import <UIKit/UIKit.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include "launcher_menu.h"
 
 typedef struct launcher_game_s
@@ -132,6 +136,43 @@ static game_state_t GameState( NSString *root, const launcher_game_t *g )
 }
 
 // The 25th anniversary update (2023) added the hldemo chapter to valve
+// For multiplayer: the addresses friends can join this device at, its
+// Wi-Fi one and its Tailscale one (100.64.0.0/10, on a utun interface)
+static NSString *JoinAddresses( void )
+{
+	struct ifaddrs *list = NULL, *i;
+	NSString *wifi = nil, *tailscale = nil;
+
+	if( getifaddrs( &list ) != 0 )
+		return nil;
+
+	for( i = list; i; i = i->ifa_next )
+	{
+		char text[INET_ADDRSTRLEN];
+		uint32_t a;
+
+		if( !i->ifa_addr || i->ifa_addr->sa_family != AF_INET || !( i->ifa_flags & IFF_UP ))
+			continue;
+
+		a = ntohl((( struct sockaddr_in *)i->ifa_addr )->sin_addr.s_addr );
+		if( !inet_ntop( AF_INET, &(( struct sockaddr_in *)i->ifa_addr )->sin_addr, text, sizeof( text )))
+			continue;
+
+		if( !wifi && !strcmp( i->ifa_name, "en0" ))
+			wifi = [NSString stringWithUTF8String:text];
+		else if( !tailscale && !strncmp( i->ifa_name, "utun", 4 ) && ( a & 0xFFC00000 ) == 0x64400000 )
+			tailscale = [NSString stringWithUTF8String:text];
+	}
+
+	freeifaddrs( list );
+
+	if( wifi && tailscale )
+		return [NSString stringWithFormat:@"Multiplayer: friends join this %@ at %@ (Wi-Fi) or %@ (Tailscale).", [UIDevice currentDevice].model, wifi, tailscale];
+	if( wifi || tailscale )
+		return [NSString stringWithFormat:@"Multiplayer: friends join this %@ at %@ (%@).", [UIDevice currentDevice].model, wifi ? wifi : tailscale, wifi ? @"Wi-Fi" : @"Tailscale"];
+	return nil;
+}
+
 static BOOL IsAnniversaryData( NSString *root )
 {
 	NSString *maps = FindChild( GameFolder( root, &games[0] ), @"maps" );
@@ -179,7 +220,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	footer = [[UILabel alloc] init];
 	footer.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
 	footer.font = [UIFont systemFontOfSize:13];
-	footer.numberOfLines = 2;
+	footer.numberOfLines = 4;
 
 	UIButton *options = [UIButton buttonWithType:UIButtonTypeSystem];
 	[options setTitle:@"Options" forState:UIControlStateNormal];
@@ -294,6 +335,10 @@ static BOOL IsAnniversaryData( NSString *root )
 	footer.text = [NSString stringWithFormat:@"Game files go in Files › On My %@ › %@%@.",
 		[UIDevice currentDevice].model,
 		[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app", where];
+
+	NSString *join = JoinAddresses();
+	if( join )
+		footer.text = [footer.text stringByAppendingFormat:@"\n%@", join];
 }
 
 - (void)cardTapped:(UIButton *)card
