@@ -17,7 +17,9 @@ HLSDK_REPO=${HLSDK_REPO:-https://github.com/FWGS/hlsdk-portable}
 HLSDK_GAMES=${HLSDK_GAMES:-"master:valve opfor:gearbox bshift:bshift"}
 IPA_NAME=${IPA_NAME:-Xash3D-iOS-unsigned.ipa}
 
-./waf configure --enable-lto --ios build install --destdir=build/ios || { cat build/config.log; exit 1; }
+mkdir -p build
+./waf configure --enable-lto --ios build install --destdir=build/ios 2>&1 | tee build/waf.log
+[ "${PIPESTATUS[0]}" -eq 0 ] || { cat build/config.log; exit 1; }
 
 if [ ! -d build/SDL2.framework ]; then
 	cp -R /Library/Frameworks/SDL2.framework build/
@@ -56,3 +58,9 @@ find "$LIBSDIR" -name '*.dylib' | sort
 
 mkdir -p artifacts
 mv build/xash3d.ipa "artifacts/$IPA_NAME"
+
+# our iOS sources, compiled: shown at the end where the log is easy to read
+echo "Compiled iOS sources:"
+grep -oE "platform/ios/[a-z_]+\.(m|c)" build/waf.log | sort -u || true
+echo "Warnings in iOS code:"
+grep -E "platform/ios|input/input\.c" build/waf.log | grep -iE "warning|error" || echo "none"

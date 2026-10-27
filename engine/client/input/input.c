@@ -594,6 +594,9 @@ static void IN_CollectInput( float *forward, float *side, float *pitch, float *y
 	IN_GyroFinalizeMove( forward, side, pitch, yaw );
 	Joy_FinalizeMove( forward, side, pitch, yaw );
 	Touch_GetMove( forward, side, pitch, yaw );
+#if XASH_IOS
+	IOS_TouchGetMove( pitch, yaw );
+#endif
 
 	if( look_filter.value )
 	{
@@ -689,6 +692,9 @@ Called every frame, even if not generating commands
 */
 void Host_InputFrame( void )
 {
+#if XASH_IOS
+	IOS_TouchFrame();
+#endif
 	IN_Commands();
 
 	IN_MouseMove();

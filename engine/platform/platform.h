@@ -58,6 +58,8 @@ const char *IOS_GetDocsDir( void );
 const char *IOS_GetExecDir( void );
 void IOS_LaunchDialog( void );
 void IOS_GetWindowInsets( void *window, float insets[4] );
+void IOS_TouchFrame( void );
+void IOS_TouchGetMove( float *pitch, float *yaw );
 #endif // TARGET_OS_IOS
 
 #if XASH_WIN32 || XASH_LINUX
