@@ -407,6 +407,9 @@ void V_RenderView( void )
 	do
 	{
 		clgame.dllFuncs.pfnCalcRefdef( &rp );
+#if XASH_IOS
+		IOS_PhotoCalcRefdef( &rp );
+#endif
 
 		// client dll may replace viewmodel in pfnCalcRefdef, so set animtime again
 		// V_SetupViewModel did it only for the model known before this call
@@ -537,7 +540,11 @@ void V_PostRender( void )
 	ref.dllFuncs.R_AllowFog( false );
 	ref.dllFuncs.R_Set2DMode( true );
 
-	if( cls.state == ca_active && cls.signon == SIGNONS && cls.scrshot_action != scrshot_mapshot )
+	if( cls.state == ca_active && cls.signon == SIGNONS && cls.scrshot_action != scrshot_mapshot
+#if XASH_IOS
+		&& !IOS_PhotoHideHUD( )
+#endif
+		)
 	{
 		SCR_TileClear();
 		CL_DrawHUD( CL_ACTIVE );
@@ -552,6 +559,12 @@ void V_PostRender( void )
 		draw_2d = true;
 		break;
 	}
+
+#if XASH_IOS
+	// photo mode: nothing over a camera view or a clean photo
+	if( IOS_PhotoHideHUD( ))
+		draw_2d = false;
+#endif
 
 	if( draw_2d )
 	{
@@ -579,6 +592,9 @@ void V_PostRender( void )
 	}
 
 	SCR_MakeScreenShot();
+#if XASH_IOS
+	IOS_PhotoPostRender();
+#endif
 	ref.dllFuncs.R_AllowFog( true );
 	Platform_SetTimer( 0.0f );
 	ref.dllFuncs.R_EndFrame();

@@ -24,6 +24,7 @@ GNU General Public License for more details.
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreMotion/CoreMotion.h>
+#import <AudioToolbox/AudioToolbox.h>
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include <os/lock.h>
@@ -71,6 +72,17 @@ GNU General Public License for more details.
 #define IOSTOUCH_LEVEL_HOLD 0.5
 #define IOSTOUCH_LEVEL_STEP 0.4
 #define IOSTOUCH_TOAST_TIME 1.6
+// CAMERA: tap = photo; held still = selfie; slid sideways = burst; slid
+// down = Action Freeze; slid up = the cinematic burst
+#define IOSTOUCH_CAM_HOLD 0.5
+#define IOSTOUCH_CAM_SLIDE 10.0
+#define IOSTOUCH_CAM_FAR 36.0
+#define IOSTOUCH_BURST_STEP 0.2
+#define IOSTOUCH_BURST_MAX 10
+#define IOSTOUCH_SEQ_SETTLE 0.35   // a camera shot: the camera moves, then...
+#define IOSTOUCH_SEQ_CAPTURE 0.12  // ...a moment later the photo
+#define IOSTOUCH_SEQ_SHOW 0.9      // the last view stays this long
+#define IOSTOUCH_CINEMA_SHOTS 5
 // Gyro
 #define IOSTOUCH_GYRO_HZ 100.0
 #define IOSTOUCH_GYRO_MAX_DT 0.05
@@ -94,6 +106,10 @@ GNU General Public License for more details.
 #define KEY_SHOW_FPS  @"iosTouchShowFps"
 #define KEY_SWAPPED   @"iosTouchSwapped"
 #define KEY_SHOW_CHEAT @"iosTouchShowCheat"
+#define KEY_SHOW_CAMERA @"iosTouchShowCamera"
+#define KEY_CAMERA_KINDS @"iosTouchCameraKinds"
+#define KEY_SELFIES   @"iosTouchSelfieShots"
+#define KEY_FREEZE    @"iosTouchFreeze"
 
 enum { GYRO_OFF, GYRO_TOUCH, GYRO_ALWAYS, GYRO_NUM_MODES };
 static const float gyro_sens[] = { 1.0f, 1.5f, 2.0f, 3.0f };
@@ -113,15 +129,23 @@ typedef enum
 	BTN_QLOAD,
 	BTN_MENU,
 	BTN_CHEAT,
+	BTN_CAMERA,
+	BTN_FREEZE_X,
 	BTN_TRAY_GYRO,
 	BTN_TRAY_SENS,
 	BTN_TRAY_FPS,
+	BTN_TRAY_CAM,
 	BTN_TRAY_CHEAT,
 	BTN_TRAY_LEVEL,
 	BTN_TRAY_CTRL,
 	BTN_TRAY_KEYS,
 	BTN_GYRO_MODE,
 	BTN_GYRO_SENS,
+	BTN_CAM_CLEAN,
+	BTN_CAM_HUD,
+	BTN_CAM_BTNS,
+	BTN_CAM_SELFIES,
+	BTN_CAM_FREEZE,
 	BTN_COUNT
 } button_id_t;
 
@@ -134,9 +158,10 @@ typedef enum
 	KIND_TRAY,     // a tray or option row button
 	KIND_CHEAT,    // held: the cheat on or off
 	KIND_LEVEL,    // held: counts the chapters, lifted: goes there
+	KIND_CAMERA,   // the photo mode's gestures
 } button_kind_t;
 
-enum { ROW_MAIN, ROW_TRAY, ROW_GYRO };
+enum { ROW_MAIN, ROW_TRAY, ROW_GYRO, ROW_CAM, ROW_FREEZE };
 
 typedef struct
 {
@@ -163,15 +188,23 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_QLOAD]     = { "QUICK\nLOAD",  KIND_HOLDACT, IOSTOUCH_ACT_QUICKLOAD, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
 [BTN_MENU]      = { "MENU",         KIND_MENU,    IOSTOUCH_ACT_ESCAPE,    22, 0, ROW_MAIN, IOSTOUCH_MENU_HOLD },
 [BTN_CHEAT]     = { "CHEAT",        KIND_CHEAT,   0,                      22, 0, ROW_MAIN, IOSTOUCH_CHEAT_HOLD },
+[BTN_CAMERA]    = { "PHOTO",        KIND_CAMERA,  0,                      22, 0, ROW_MAIN, IOSTOUCH_CAM_HOLD },
+[BTN_FREEZE_X]  = { "X",            KIND_TAP,     0,                      22, 0, ROW_FREEZE },
 [BTN_TRAY_GYRO] = { "GYRO",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
+[BTN_TRAY_CAM]  = { "CAMERA",       KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_CHEAT] = { "CHEAT",       KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_LEVEL] = { "LEVEL",       KIND_LEVEL,   0,                      20, 0, ROW_TRAY, IOSTOUCH_LEVEL_HOLD },
 [BTN_TRAY_CTRL] = { "CONTROLS",     KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_KEYS] = { "KEYS",         KIND_TRAY,    IOSTOUCH_ACT_CONSOLE,   20, 0, ROW_TRAY },
 [BTN_GYRO_MODE] = { "MODE",         KIND_TRAY,    0,                      20, 0, ROW_GYRO },
 [BTN_GYRO_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_GYRO },
+[BTN_CAM_CLEAN] = { "CLEAN",        KIND_TRAY,    IOSTOUCH_PHOTO_CLEAN,   20, 0, ROW_CAM },
+[BTN_CAM_HUD]   = { "HUD",          KIND_TRAY,    IOSTOUCH_PHOTO_HUD,     20, 0, ROW_CAM },
+[BTN_CAM_BTNS]  = { "HUD+\nBTNS",   KIND_TRAY,    IOSTOUCH_PHOTO_HUDBTNS, 20, 0, ROW_CAM },
+[BTN_CAM_SELFIES] = { "SELFIES",    KIND_TRAY,    0,                      20, 0, ROW_CAM },
+[BTN_CAM_FREEZE] = { "FREEZE",      KIND_TRAY,    0,                      20, 0, ROW_CAM },
 };
 
 typedef enum { ROLE_NONE, ROLE_STICK, ROLE_LOOK, ROLE_BUTTON, ROLE_IGNORE } role_t;
@@ -199,6 +232,16 @@ static int gyro_mode = GYRO_OFF, gyro_last_mode = GYRO_TOUCH, gyro_sens_i = 1;
 static int look_sens_i = 2;
 static int show_fps, swapped, show_cheat, cheat_on;
 static int level_counting, level_index;
+static int show_camera = 1, camera_kinds = IOSTOUCH_PHOTO_CLEAN, selfie_shots = 3, freeze_on = 1, cam_row_open;
+
+// the camera: a burst while CAMERA is held, a selfie or cinematic sequence,
+// or Action Freeze
+enum { SEQ_NONE, SEQ_SELFIE, SEQ_CINEMA };
+static int burst_on, burst_count;
+static CFTimeInterval burst_next;
+static int seq, seq_i, seq_n, seq_phase;
+static CFTimeInterval seq_next;
+static int freezing;
 static CFTimeInterval level_next, toast_until, jump_tap_end;
 static int gyro_running, gyro_was_ok, gyro_last_side;
 static CFTimeInterval gyro_turned_round, gyro_last_frame;
@@ -370,6 +413,20 @@ static void LoadSettings( void )
 
 	show_fps = (int)[d boolForKey:KEY_SHOW_FPS];
 	show_cheat = (int)[d boolForKey:KEY_SHOW_CHEAT];
+
+	if( [d objectForKey:KEY_SHOW_CAMERA] )
+		show_camera = (int)[d boolForKey:KEY_SHOW_CAMERA];
+	if( [d objectForKey:KEY_CAMERA_KINDS] )
+		camera_kinds = (int)[d integerForKey:KEY_CAMERA_KINDS] & 7;
+	if( !camera_kinds )
+		camera_kinds = IOSTOUCH_PHOTO_CLEAN;
+	if( [d objectForKey:KEY_SELFIES] )
+	{
+		NSInteger n = [d integerForKey:KEY_SELFIES];
+		selfie_shots = n == 1 || n == 5 ? (int)n : 3;
+	}
+	if( [d objectForKey:KEY_FREEZE] )
+		freeze_on = (int)[d boolForKey:KEY_FREEZE];
 	swapped = (int)[d boolForKey:KEY_SWAPPED];
 }
 
@@ -398,6 +455,7 @@ static void SaveGyro( void )
 	CAShapeLayer *run_link;
 	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
 	UILabel *toast;
+	UIView *flash;
 	CGPoint stick_center;
 	CGFloat run_dist;            // 0: no marker
 	int running;
@@ -416,6 +474,8 @@ static void SaveGyro( void )
 - (void)setCheat:(int)on;
 - (void)updateShown;
 - (void)updateLabels;
+- (void)flash:(int)burst;
+- (void)endCamera;
 @end
 
 static UIView *MakeCircle( CGFloat radius, CGFloat alpha )
@@ -517,6 +577,13 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	toast.hidden = YES;
 	[self addSubview:toast];
 
+	flash = [[UIView alloc] initWithFrame:self.bounds];
+	flash.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	flash.backgroundColor = [UIColor whiteColor];
+	flash.userInteractionEnabled = NO;
+	flash.alpha = 0.0;
+	[self addSubview:flash];
+
 	stick_ring = MakeCircle( IOSTOUCH_STICK_RADIUS, 0.08 );
 	stick_knob = MakeCircle( IOSTOUCH_STICK_KNOB, 0.35 );
 	run_marker = MakeCircle( IOSTOUCH_RUN_R, 0.12 );
@@ -581,9 +648,16 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	btn_lit[BTN_TRAY_FPS] = show_fps;
 	btn_lit[BTN_TRAY_CTRL] = swapped;
 	btn_lit[BTN_TRAY_CHEAT] = show_cheat;
+	btn_lit[BTN_TRAY_CAM] = show_camera;
+	btn_lit[BTN_CAM_CLEAN] = ( camera_kinds & IOSTOUCH_PHOTO_CLEAN ) != 0;
+	btn_lit[BTN_CAM_HUD] = ( camera_kinds & IOSTOUCH_PHOTO_HUD ) != 0;
+	btn_lit[BTN_CAM_BTNS] = ( camera_kinds & IOSTOUCH_PHOTO_HUDBTNS ) != 0;
+	btn_lit[BTN_CAM_FREEZE] = freeze_on;
+	btn_labels[BTN_CAM_SELFIES].text = [NSString stringWithFormat:@"SELFIES\n%d", selfie_shots];
+	btn_labels[BTN_CAM_FREEZE].text = freeze_on ? @"FREEZE\nON" : @"FREEZE\nOFF";
 	btn_lit[BTN_CHEAT] = cheat_on;
 
-	cheat_tags[0].hidden = cheat_tags[1].hidden = !cheat_on;
+	cheat_tags[0].hidden = cheat_tags[1].hidden = !cheat_on || freezing || seq != SEQ_NONE;
 	cheat_tags[0].textColor = IOS_CheatNoclip( ) ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
 	cheat_tags[1].textColor = IOS_CheatNotarget( ) ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
 
@@ -654,6 +728,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	[self place:BTN_QSAVE at:CGPointMake( right - 156, top )];
 	[self place:BTN_QLOAD at:CGPointMake( right - 90, top )];
 	[self place:BTN_MENU at:CGPointMake( right - 24, top )];
+	[self place:BTN_CAMERA at:CGPointMake( size.width * 0.5, top )];
+	[self place:BTN_FREEZE_X at:CGPointMake( right - 24, top )];
 	// CHEAT between the middle of the top row (CAMERA's place) and QUICK SAVE
 	[self place:BTN_CHEAT at:CGPointMake(( size.width * 0.5 + btn_pos[BTN_QSAVE].x ) * 0.5, top )];
 
@@ -671,14 +747,27 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)updateShown
 {
-	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_FPS, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
+	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_FPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
+	static const int camrow[] = { BTN_CAM_CLEAN, BTN_CAM_HUD, BTN_CAM_BTNS, BTN_CAM_SELFIES, BTN_CAM_FREEZE };
 	CGFloat top = [self topRowY];
 	int n = 0;
 
 	for( int i = 0; i < BTN_COUNT; i++ )
 	{
 		int row = buttons[i].row;
-		btn_shown[i] = row == ROW_MAIN || ( row == ROW_TRAY && tray_open ) || ( row == ROW_GYRO && tray_open && gyro_row_open );
+		btn_shown[i] = row == ROW_MAIN || ( row == ROW_TRAY && tray_open ) || ( row == ROW_GYRO && tray_open && gyro_row_open )
+			|| ( row == ROW_CAM && tray_open && cam_row_open );
+
+		if( i == BTN_CAMERA && !show_camera )
+			btn_shown[i] = 0;
+
+		// a camera sequence shows nothing; Action Freeze only CAMERA and X
+		if( seq != SEQ_NONE )
+			btn_shown[i] = 0;
+		else if( freezing )
+			btn_shown[i] = i == BTN_CAMERA || i == BTN_FREEZE_X;
+		else if( row == ROW_FREEZE )
+			btn_shown[i] = 0;
 
 		// no gyro on this device: no gyro buttons
 		if(( i == BTN_TRAY_GYRO || row == ROW_GYRO ) && !motion.deviceMotionAvailable )
@@ -708,6 +797,11 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		[self place:tray[i] at:CGPointMake( x, top + IOSTOUCH_TRAY_DROP )];
 		x += IOSTOUCH_TRAY_STEP;
 	}
+
+	// the camera options, ending under the tray's CAMERA
+	x = btn_pos[BTN_TRAY_CAM].x - ( IOSTOUCH_COUNT( camrow ) - 1 ) * IOSTOUCH_TRAY_STEP;
+	for( int i = 0; i < (int)IOSTOUCH_COUNT( camrow ); i++ )
+		[self place:camrow[i] at:CGPointMake( MAX( x + i * IOSTOUCH_TRAY_STEP, [self insets].left + 24 + i * IOSTOUCH_TRAY_STEP ), top + 2 * IOSTOUCH_TRAY_DROP )];
 
 	[self place:BTN_GYRO_MODE at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x, top + 2 * IOSTOUCH_TRAY_DROP )];
 	[self place:BTN_GYRO_SENS at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x + IOSTOUCH_TRAY_STEP, top + 2 * IOSTOUCH_TRAY_DROP )];
@@ -798,7 +892,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)closeTray
 {
-	tray_open = gyro_row_open = 0;
+	tray_open = gyro_row_open = cam_row_open = 0;
 	[self updateShown];
 }
 
@@ -939,6 +1033,29 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		[[NSUserDefaults standardUserDefaults] setBool:swapped forKey:KEY_SWAPPED];
 		[self layoutButtons];
 		break;
+	case BTN_TRAY_CAM:
+		show_camera = !show_camera;
+		[[NSUserDefaults standardUserDefaults] setBool:show_camera forKey:KEY_SHOW_CAMERA];
+		if( show_camera )
+			IOSPhotos_AskAccess();
+		[self updateShown];
+		break;
+	case BTN_CAM_CLEAN:
+	case BTN_CAM_HUD:
+	case BTN_CAM_BTNS:
+		// at least one kind stays ticked
+		if(( camera_kinds ^ buttons[i].arg ) != 0 )
+			camera_kinds ^= buttons[i].arg;
+		[[NSUserDefaults standardUserDefaults] setInteger:camera_kinds forKey:KEY_CAMERA_KINDS];
+		break;
+	case BTN_CAM_SELFIES:
+		selfie_shots = selfie_shots == 1 ? 3 : ( selfie_shots == 3 ? 5 : 1 );
+		[[NSUserDefaults standardUserDefaults] setInteger:selfie_shots forKey:KEY_SELFIES];
+		break;
+	case BTN_CAM_FREEZE:
+		freeze_on = !freeze_on;
+		[[NSUserDefaults standardUserDefaults] setBool:freeze_on forKey:KEY_FREEZE];
+		break;
 	case BTN_TRAY_CHEAT:
 		// shows the CHEAT button and switches the cheat on; again, hides it
 		show_cheat = !show_cheat;
@@ -954,6 +1071,172 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	}
 
 	[self updateLabels];
+}
+
+- (void)flash:(int)burst
+{
+	[flash.layer removeAllAnimations];
+	flash.alpha = burst ? 0.35 : 0.85;
+	[UIView animateWithDuration:burst ? 0.12 : 0.3 animations:^{ flash.alpha = 0.0; }];
+}
+
+// a photo of each kind ticked (in Action Freeze and camera shots: clean)
+- (void)takePhoto:(int)burst
+{
+	int kinds = ( freezing || seq != SEQ_NONE ) ? IOSTOUCH_PHOTO_CLEAN : camera_kinds;
+
+	IOSPhotos_AskAccess();
+
+	for( int k = IOSTOUCH_PHOTO_CLEAN; k <= IOSTOUCH_PHOTO_HUDBTNS; k <<= 1 )
+	{
+		if( kinds & k )
+			IOS_PhotoCapture( k, burst );
+	}
+}
+
+// everything held lets go, so the player stands still for the camera
+- (void)letGoExcept:(slot_t *)keep
+{
+	for( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ )
+	{
+		slot_t *s = &slots[i];
+
+		if( !s->touch || s == keep )
+			continue;
+
+		if( s->role == ROLE_BUTTON )
+			[self setPressed:s->button on:0];
+		s->role = ROLE_IGNORE;
+	}
+
+	held_cmds = 0;
+	[self endStick];
+	[self closeTray];
+}
+
+- (void)startSequence:(int)type
+{
+	int ok = type == SEQ_SELFIE ? IOS_PhotoSelfieBegin() : IOS_PhotoOrbitBegin();
+
+	if( !ok )
+	{
+		[self showToast:@"Selfies are for single player games"];
+		return;
+	}
+
+	seq = type;
+	seq_i = 0;
+	seq_n = type == SEQ_SELFIE ? selfie_shots : IOSTOUCH_CINEMA_SHOTS;
+	seq_phase = 0;
+	seq_next = CACurrentMediaTime() + IOSTOUCH_SEQ_SETTLE;
+	IOSPhotos_SetBatch( seq_n > 1 );
+	[self letGoExcept:NULL];
+	[self updateShown];
+	[self updateLabels];
+}
+
+- (void)startFreeze:(slot_t *)keep
+{
+	if( !IOS_PhotoFreezeBegin() )
+	{
+		[self showToast:@"Action Freeze is for single player games"];
+		return;
+	}
+
+	freezing = 1;
+	[self letGoExcept:keep];
+	[self showToast:@"One finger: orbit. Two: move and zoom. X: back"];
+	[self updateShown];
+	[self updateLabels];
+}
+
+- (void)endCamera
+{
+	IOS_PhotoCameraEnd();
+	look_yaw = look_pitch = 0;
+	freezing = 0;
+	seq = SEQ_NONE;
+	if( burst_on )
+		IOSPhotos_SetBatch( 0 );
+	burst_on = 0;
+	[self updateShown];
+	[self updateLabels];
+}
+
+// once a frame: the burst and the camera sequences
+- (void)cameraFrame
+{
+	CFTimeInterval now = CACurrentMediaTime();
+
+	if( burst_on && now >= burst_next && burst_count < IOSTOUCH_BURST_MAX )
+	{
+		[self takePhoto:1];
+		burst_count++;
+		burst_next = now + IOSTOUCH_BURST_STEP;
+	}
+
+	if( seq == SEQ_NONE || now < seq_next )
+		return;
+
+	if( seq_phase == 0 )
+	{
+		// the camera to the shot's place, then a moment to settle
+		if( seq == SEQ_SELFIE )
+			IOS_PhotoSelfieShot( seq_i, seq_n );
+		else IOS_PhotoOrbitShot( seq_i, seq_n );
+		seq_phase = 1;
+		seq_next = now + IOSTOUCH_SEQ_CAPTURE;
+	}
+	else if( seq_phase == 1 )
+	{
+		[self takePhoto:seq_n > 1];
+		if( ++seq_i < seq_n )
+		{
+			seq_phase = 0;
+			seq_next = now + IOSTOUCH_SEQ_SETTLE;
+		}
+		else
+		{
+			seq_phase = 2;
+			seq_next = now + IOSTOUCH_SEQ_SHOW;
+		}
+	}
+	else
+	{
+		IOSPhotos_SetBatch( 0 );
+		[self endCamera];
+	}
+}
+
+// Action Freeze: one finger orbits, two pan and pinch
+- (void)freezeMoved:(NSSet<UITouch *> *)touches
+{
+	slot_t *f[2] = { NULL, NULL };
+	int n = 0;
+
+	for( int i = 0; i < IOSTOUCH_MAX_TOUCHES && n < 2; i++ )
+	{
+		if( slots[i].touch && slots[i].role == ROLE_LOOK )
+			f[n++] = &slots[i];
+	}
+
+	if( n == 1 && [touches containsObject:f[0]->touch] )
+	{
+		CGPoint p = [f[0]->touch locationInView:self];
+		IOS_PhotoFreezeMove( p.x - f[0]->last.x, p.y - f[0]->last.y, 0, 0, 0 );
+	}
+	else if( n == 2 )
+	{
+		CGPoint a0 = f[0]->last, b0 = f[1]->last;
+		CGPoint a1 = [f[0]->touch locationInView:self], b1 = [f[1]->touch locationInView:self];
+		CGFloat h = MAX( self.bounds.size.height, 1.0 );
+		CGFloat d0 = Dist( a0, b0 ), d1 = Dist( a1, b1 );
+
+		IOS_PhotoFreezeMove( 0, 0,
+			(( a1.x + b1.x ) - ( a0.x + b0.x )) * 0.5 / h,
+			(( a1.y + b1.y ) - ( a0.y + b0.y )) * 0.5 / h,
+			d0 > 1.0 ? d1 / d0 : 0.0 );
+	}
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
@@ -973,6 +1256,19 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		s->t0 = CACurrentMediaTime();
 
 		b = [self buttonAt:p];
+
+		// a camera sequence takes no touches; Action Freeze takes them all
+		if( seq != SEQ_NONE )
+		{
+			s->role = ROLE_IGNORE;
+			continue;
+		}
+
+		if( freezing && b < 0 )
+		{
+			s->role = ROLE_LOOK;
+			continue;
+		}
 
 		// a touch off the open tray closes it, and does nothing else
 		if( tray_open && ( b < 0 || buttons[b].row == ROW_MAIN ) && b != BTN_MENU )
@@ -1005,6 +1301,9 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
+	if( freezing )
+		[self freezeMoved:touches];
+
 	for( UITouch *t in touches )
 	{
 		slot_t *s = [self slotFor:t];
@@ -1021,10 +1320,40 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			[self moveStick:p];
 			break;
 		case ROLE_LOOK:
-			[self look:s->last to:p];
+			if( !freezing )
+				[self look:s->last to:p];
 			break;
 		case ROLE_BUTTON:
-			if( buttons[s->button].look )
+			if( buttons[s->button].kind == KIND_CAMERA && !freezing )
+			{
+				CGFloat dx = p.x - s->start.x, dy = p.y - s->start.y;
+
+				if( s->done || burst_on )
+					break;
+
+				// sideways: a burst while held; down: Action Freeze; up: the cinematic burst
+				if( fabs( dx ) >= IOSTOUCH_CAM_SLIDE && fabs( dx ) > fabs( dy ))
+				{
+					s->done = 1;
+					burst_on = 1;
+					burst_count = 0;
+					burst_next = 0;
+					IOSPhotos_SetBatch( 1 );
+				}
+				else if( dy >= IOSTOUCH_CAM_FAR && freeze_on )
+				{
+					s->done = 1;
+					[self setPressed:s->button on:0];
+					[self startFreeze:s];
+				}
+				else if( dy <= -IOSTOUCH_CAM_FAR )
+				{
+					s->done = 1;
+					[self setPressed:s->button on:0];
+					[self startSequence:SEQ_CINEMA];
+				}
+			}
+			else if( buttons[s->button].look )
 				[self look:s->last to:p];
 			else if( !s->off && Dist( p, btn_pos[s->button] ) > buttons[s->button].radius + IOSTOUCH_TOUCH_SLOP * 2 )
 			{
@@ -1069,7 +1398,9 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			held_cmds &= ~BIT_CMD( def->arg );
 			break;
 		case KIND_TAP:
-			if( tap )
+			if( tap && b == BTN_FREEZE_X )
+				[self endCamera];
+			else if( tap )
 				QueueAction( def->arg );
 			break;
 		case KIND_MENU:
@@ -1084,6 +1415,15 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		case KIND_TRAY:
 			if( tap )
 				[self tapTray:b];
+			break;
+		case KIND_CAMERA:
+			if( burst_on )
+			{
+				burst_on = 0;
+				IOSPhotos_SetBatch( 0 );
+			}
+			else if( tap )
+				[self takePhoto:0];
 			break;
 		case KIND_LEVEL:
 			if( level_counting && !cancelled && !s->off )
@@ -1147,6 +1487,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	look_yaw = look_pitch = 0;
 	level_counting = 0;
 	toast.hidden = YES;
+	if( freezing || seq != SEQ_NONE || burst_on )
+		[self endCamera];
 	[self endStick];
 	[self closeTray];
 }
@@ -1155,6 +1497,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 - (void)updateHolds
 {
 	CFTimeInterval now = CACurrentMediaTime();
+
+	[self cameraFrame];
 
 	if( level_counting )
 	{
@@ -1250,11 +1594,25 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			break;
 		case BTN_TRAY_GYRO:
 			gyro_row_open = 1;
+			cam_row_open = 0;
 			[self updateShown];
 			[self updateLabels];
 			break;
 		case BTN_CHEAT:
 			[self setCheat:!cheat_on];
+			break;
+		case BTN_CAMERA:
+			if( freezing )
+				break;
+			[self setPressed:BTN_CAMERA on:0];
+			if( s->moved < IOSTOUCH_CAM_SLIDE )
+				[self startSequence:SEQ_SELFIE];
+			break;
+		case BTN_TRAY_CAM:
+			cam_row_open = 1;
+			gyro_row_open = 0;
+			[self updateShown];
+			[self updateLabels];
 			break;
 		case BTN_TRAY_LEVEL:
 			level_counting = 1;
@@ -1337,7 +1695,7 @@ static void GyroFrame( void )
 	gyro_yaw = gyro_pitch = 0.0;
 	os_unfair_lock_unlock( &gyro_lock );
 
-	ok = gyro_running && ( gyro_mode == GYRO_ALWAYS || [overlay gyroThumbDown] ) && !tray_open
+	ok = gyro_running && ( gyro_mode == GYRO_ALWAYS || [overlay gyroThumbDown] ) && !tray_open && !freezing && seq == SEQ_NONE
 		&& now - gyro_turned_round >= IOSTOUCH_GYRO_TURN_HOLD;
 	use = ok && gyro_was_ok && now - gyro_last_frame <= IOSTOUCH_GYRO_MAX_FRAME;
 	gyro_was_ok = ok;
@@ -1419,6 +1777,27 @@ int IOSTouch_PopAction( void )
 	action = actions[actions_head];
 	actions_head = ( actions_head + 1 ) % IOSTOUCH_MAX_ACTIONS;
 	return action;
+}
+
+void IOSTouch_ShowMessage( const char *text )
+{
+	if( overlay )
+		[overlay showToast:@( text )];
+}
+
+void IOSTouch_CameraFeedback( int burst )
+{
+	if( !overlay )
+		return;
+
+	[overlay flash:burst];
+	AudioServicesPlaySystemSound( burst ? 1104 : 1108 );
+	Haptic( 0 );
+}
+
+UIView *IOSTouch_OverlayView( void )
+{
+	return overlay;
 }
 
 void IOSTouch_ToggleCheat( void )

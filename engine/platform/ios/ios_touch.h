@@ -69,6 +69,40 @@ void IOSTouch_ToggleCheat( void );
 void IOS_TouchFrame( void );
 void IOS_TouchGetMove( float *pitch, float *yaw );
 
+// Photo kinds, also the bits of the PHOTO option
+enum
+{
+	IOSTOUCH_PHOTO_CLEAN   = 1, // the scene, no HUD
+	IOSTOUCH_PHOTO_HUD     = 2, // as seen, with the HUD
+	IOSTOUCH_PHOTO_HUDBTNS = 4, // with the HUD and the touch buttons
+};
+
+// overlay side (ios_touch.m), for the photos
+void IOSTouch_ShowMessage( const char *text );
+void IOSTouch_CameraFeedback( int burst );
+#ifdef __OBJC__
+@class UIView;
+UIView *IOSTouch_OverlayView( void );
+#endif
+
+// saving (ios_photos.m): the engine wrote one frame to path
+void IOSPhotos_SaveFile( const char *path, int kind, int burst );
+void IOSPhotos_SetBatch( int on );
+void IOSPhotos_AskAccess( void );
+
+// engine side (ios_photo.c)
+int IOS_PhotoCameraAllowed( void );
+int IOS_PhotoCameraActive( void );
+void IOS_PhotoCameraEnd( void );
+int IOS_PhotoSelfieBegin( void );
+void IOS_PhotoSelfieShot( int i, int n );
+int IOS_PhotoFreezeBegin( void );
+void IOS_PhotoFreezeMove( float dx, float dy, float panx, float pany, float zoom );
+int IOS_PhotoOrbitBegin( void );
+void IOS_PhotoOrbitShot( int i, int n );
+void IOS_PhotoCapture( int kind, int burst );
+int IOS_PhotoBusy( void );
+
 // engine side (ios_cheats.c), single player only
 void IOS_CheatInit( void );
 void IOS_CheatFrame( void );

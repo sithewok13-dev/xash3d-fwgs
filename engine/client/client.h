@@ -919,8 +919,17 @@ static inline model_t *CL_ModelHandle( int modelindex )
 	return likely( modelindex >= 0 && modelindex < MAX_MODELS ) ? cl.models[modelindex] : NULL;
 }
 
+#if XASH_IOS
+int IOS_PhotoThirdPerson( void ); // engine/platform/ios/ios_photo.c
+#endif
+
 static inline qboolean CL_IsThirdPerson( void )
 {
+#if XASH_IOS
+	// photo mode's camera: the player's body shows, the weapon doesn't
+	if( IOS_PhotoThirdPerson( ))
+		return true;
+#endif
 	return clgame.dllFuncs.CL_IsThirdPerson();
 }
 

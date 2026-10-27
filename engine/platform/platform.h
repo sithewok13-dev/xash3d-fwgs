@@ -60,6 +60,11 @@ void IOS_LaunchDialog( void );
 void IOS_GetWindowInsets( void *window, float insets[4] );
 void IOS_TouchFrame( void );
 void IOS_TouchGetMove( float *pitch, float *yaw );
+struct ref_params_s;
+void IOS_PhotoCalcRefdef( struct ref_params_s *rp );
+int IOS_PhotoThirdPerson( void );
+int IOS_PhotoHideHUD( void );
+void IOS_PhotoPostRender( void );
 #endif // TARGET_OS_IOS
 
 #if XASH_WIN32 || XASH_LINUX
