@@ -477,8 +477,8 @@ static void SaveGyro( void )
 	int btn_lit[BTN_COUNT];      // a switch that is on
 
 	UIView *stick_ring, *stick_knob, *run_marker;
-	UILabel *run_label;
-	CAShapeLayer *run_link;
+	CAShapeLayer *run_chevrons, *run_link;
+	int run_lit;                 // what run_marker shows (-1: not yet set)
 	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
 	UILabel *toast;
 	UIView *flash;
@@ -640,26 +640,46 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	[self addSubview:flash];
 
 	stick_ring = MakeCircle( IOSTOUCH_STICK_RADIUS, 0.08 );
-	stick_knob = MakeCircle( IOSTOUCH_STICK_KNOB, 0.35 );
-	run_marker = MakeCircle( IOSTOUCH_RUN_R, 0.12 );
-	run_label = [[UILabel alloc] initWithFrame:run_marker.bounds];
-	run_label.text = @"^^";
-	run_label.textAlignment = NSTextAlignmentCenter;
-	run_label.textColor = [UIColor whiteColor];
-	run_label.font = [UIFont boldSystemFontOfSize:11];
-	[run_marker addSubview:run_label];
+	stick_knob = MakeCircle( IOSTOUCH_STICK_KNOB, 0.30 );
+	// The run marker, as in the Jedi Knight port: a small circle in the
+	// buttons' style with two chevrons in it, joined to the stick's ring by
+	// a line; the knob sits on it while running and it lights up blue
+	{
+		const CGFloat rr = IOSTOUCH_RUN_R;
+		UIBezierPath *chev = [UIBezierPath bezierPath];
+
+		run_marker = MakeCircle( rr, 0.0 );
+		run_chevrons = [[CAShapeLayer layer] retain];
+		run_chevrons.frame = CGRectMake( 0, 0, rr * 2, rr * 2 );
+		for( int i = 0; i < 2; i++ )
+		{
+			// two chevrons, 12 pt wide, 5.5 pt apart, centred
+			CGFloat tip = rr - 5.5 + 5.5 * i;
+			[chev moveToPoint:CGPointMake( rr - 6.0, tip + 5.0 )];
+			[chev addLineToPoint:CGPointMake( rr, tip )];
+			[chev addLineToPoint:CGPointMake( rr + 6.0, tip + 5.0 )];
+		}
+		run_chevrons.path = chev.CGPath;
+		run_chevrons.lineWidth = 2.0;
+		run_chevrons.lineCap = kCALineCapRound;
+		run_chevrons.lineJoin = kCALineJoinRound;
+		run_chevrons.fillColor = [UIColor clearColor].CGColor;
+		[run_marker.layer addSublayer:run_chevrons];
+	}
 
 	run_link = [[CAShapeLayer layer] retain];
-	run_link.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.35].CGColor;
 	run_link.lineWidth = 1.5;
+	run_link.lineCap = kCALineCapRound;
 	run_link.fillColor = [UIColor clearColor].CGColor;
 	[self.layer addSublayer:run_link];
+	run_lit = -1;
 
 	[self addSubview:stick_ring];
 	[self addSubview:run_marker];
 	[self addSubview:stick_knob];
 	stick_ring.hidden = stick_knob.hidden = run_marker.hidden = YES;
 	run_link.hidden = YES;
+	[self setRunLit:0];
 
 	return self;
 }
@@ -958,6 +978,28 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	[self updateShown];
 }
 
+// The run marker's look: as an idle button (a little darker inside, so its
+// chevrons show over bright walls too), or lit blue at full strength while
+// the thumb is on it
+- (void)setRunLit:(int)lit
+{
+	lit = lit != 0;
+	if( run_lit == lit )
+		return;
+
+	run_lit = lit;
+	run_marker.alpha = lit ? 1.0 : IOSTOUCH_IDLE_ALPHA;
+	run_marker.backgroundColor = lit ? [UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.55] : [UIColor colorWithWhite:0.0 alpha:0.35];
+	run_marker.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:lit ? 0.85 : 0.45].CGColor;
+
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	run_chevrons.strokeColor = [UIColor colorWithWhite:1.0 alpha:lit ? 1.0 : 0.85].CGColor;
+	run_link.strokeColor = lit ? [UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.95].CGColor : [UIColor colorWithWhite:1.0 alpha:0.45].CGColor;
+	run_link.opacity = lit ? 1.0 : IOSTOUCH_IDLE_ALPHA;
+	[CATransaction commit];
+}
+
 // the run marker above a stick at c, as high as fits under the top row
 - (void)placeStick:(CGPoint)c
 {
@@ -985,7 +1027,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		UIBezierPath *path = [UIBezierPath bezierPath];
 
 		run_marker.center = m;
-		run_marker.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+		[self setRunLit:0];
 		[path moveToPoint:CGPointMake( c.x, c.y - IOSTOUCH_STICK_RADIUS )];
 		[path addLineToPoint:CGPointMake( c.x, m.y + IOSTOUCH_RUN_R )];
 		run_link.path = path.CGPath;
@@ -1018,11 +1060,11 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		// straight ahead at running speed, the knob on the marker
 		held_cmds |= BIT_CMD( IOSTOUCH_CMD_FORWARD );
 		stick_knob.center = CGPointMake( stick_center.x, stick_center.y - run_dist );
-		run_marker.backgroundColor = [UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.8];
+		[self setRunLit:1];
 		return;
 	}
 
-	run_marker.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+	[self setRunLit:0];
 
 	vx = dx / IOSTOUCH_STICK_RADIUS;
 	vy = dy / IOSTOUCH_STICK_RADIUS;
