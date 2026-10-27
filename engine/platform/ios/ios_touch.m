@@ -2519,6 +2519,17 @@ void IOSTouch_Frame( void *window, int ingame )
 	}
 }
 
+void IOSTouch_KeepAwake( int on )
+{
+	static int awake = -1;
+
+	if( on == awake )
+		return;
+
+	awake = on;
+	[UIApplication sharedApplication].idleTimerDisabled = on ? YES : NO;
+}
+
 int IOS_TouchShown( void )
 {
 	return overlay_shown;
