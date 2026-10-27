@@ -1316,7 +1316,7 @@ static UIColor *HudOrange( CGFloat a )
 		CFDataRef data = CFDataCreate( NULL, rgba, (CFIndex)w * h * 4 );
 		CGDataProviderRef prov = CGDataProviderCreateWithCFData( data );
 		CGImageRef cg = CGImageCreate( w, h, 8, 32, (size_t)w * 4, cs,
-			kCGBitmapByteOrderDefault | kCGImageAlphaPremultipliedLast, prov, NULL, false, kCGRenderingIntentDefault );
+			(CGBitmapInfo)kCGImageAlphaPremultipliedLast, prov, NULL, false, kCGRenderingIntentDefault );
 
 		if( cg )
 		{
