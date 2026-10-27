@@ -96,9 +96,9 @@ GNU General Public License for more details.
 #define IOSTOUCH_WHEEL_LEASH 60.0
 #define IOSTOUCH_WHEEL_HYST 4.0
 #define IOSTOUCH_WHEEL_GAP 50.0
-#define IOSTOUCH_WHEEL_R1_MAX 168.0
-#define IOSTOUCH_WHEEL_R0_FRAC 0.37
-#define IOSTOUCH_WHEEL_POP 10.0
+#define IOSTOUCH_WHEEL_R1_MAX 200.0
+#define IOSTOUCH_WHEEL_R0_FRAC 0.40
+#define IOSTOUCH_WHEEL_POP 8.0
 #define IOSTOUCH_WHEEL_MAX 32
 #define IOSTOUCH_WHEEL_CANCEL (-2)
 // Gyro
@@ -482,7 +482,8 @@ static void SaveGyro( void )
 	UILabel *toast;
 	UIView *flash;
 	UIView *wheel;               // the weapon wheel, made each time it opens
-	UILabel *wheel_title;
+	UILabel *wheel_title, *wheel_ammo;
+	UIImageView *wheel_big;              // the picked weapon's icon, in the middle
 	CAShapeLayer *wheel_slices[IOSTOUCH_WHEEL_MAX];
 	UIView *wheel_cells[IOSTOUCH_WHEEL_MAX];
 	NSMutableDictionary *icon_cache;
@@ -1382,35 +1383,51 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 
 - (void)showWheelPick
 {
+	int shown = wheel_pick;
+
 	for( int i = 0; i < wheel_n; i++ )
 	{
 		CGFloat a0, a1, mid, pop = i == wheel_pick ? IOSTOUCH_WHEEL_POP : 0.0;
+		CGFloat rm = ( wheel_r0 + wheel_r1 ) * 0.5 + pop;
 		const ios_wheel_item_t *it = &wheel_items[i];
 
 		WheelSlice( i, &a0, &a1 );
 		mid = ( a0 + a1 ) * 0.5 * M_PI / 180.0;
 
 		wheel_slices[i].path = SectorPath( CGPointMake( wheel_center.x + pop * cos( mid ), wheel_center.y + pop * sin( mid )),
-			wheel_r0, wheel_r1, a0 + 1.0, a1 - 1.0 ).CGPath;
-		wheel_slices[i].fillColor = ( i == wheel_pick ? HudOrange( 0.45 ) :
-			( it->current ? HudOrange( 0.18 ) : [UIColor colorWithWhite:1.0 alpha:0.07] )).CGColor;
-		wheel_slices[i].strokeColor = ( i == wheel_pick ? HudOrange( 1.0 ) : [UIColor colorWithWhite:1.0 alpha:0.18] ).CGColor;
-		wheel_cells[i].center = CGPointMake( wheel_center.x + ( pop + ( wheel_r0 + wheel_r1 ) * 0.5 ) * cos( mid ),
-			wheel_center.y + ( pop + ( wheel_r0 + wheel_r1 ) * 0.5 ) * sin( mid ));
+			wheel_r0, wheel_r1, a0 + 0.8, a1 - 0.8 ).CGPath;
+		wheel_slices[i].fillColor = ( i == wheel_pick ? HudOrange( 0.38 ) :
+			( it->current ? HudOrange( 0.14 ) : [UIColor colorWithWhite:1.0 alpha:0.05] )).CGColor;
+		wheel_slices[i].strokeColor = ( i == wheel_pick ? HudOrange( 1.0 ) : [UIColor colorWithWhite:1.0 alpha:0.14] ).CGColor;
+		wheel_slices[i].lineWidth = i == wheel_pick ? 2.0 : 1.0;
+		wheel_cells[i].center = CGPointMake( wheel_center.x + rm * cos( mid ), wheel_center.y + rm * sin( mid ));
+		wheel_cells[i].transform = i == wheel_pick ? CGAffineTransformMakeScale( 1.12, 1.12 ) : CGAffineTransformIdentity;
+
+		if( shown < 0 && it->current )
+			shown = i;
 	}
 
-	if( wheel_pick >= 0 )
-		wheel_title.text = @( wheel_items[wheel_pick].name );
-	else if( wheel_pick == IOSTOUCH_WHEEL_CANCEL )
-		wheel_title.text = @"Cancel";
-	else
+	// the middle: the picked weapon (or the one in hand) big, its name, its ammo
+	if( wheel_pick == IOSTOUCH_WHEEL_CANCEL )
 	{
-		wheel_title.text = @"";
-		for( int i = 0; i < wheel_n; i++ )
-		{
-			if( wheel_items[i].current )
-				wheel_title.text = @( wheel_items[i].name );
-		}
+		wheel_big.image = nil;
+		wheel_title.text = @"Cancel";
+		wheel_ammo.text = @"";
+		return;
+	}
+
+	if( shown >= 0 )
+	{
+		const ios_wheel_item_t *it = &wheel_items[shown];
+
+		wheel_big.image = [self iconFor:it];
+		wheel_big.alpha = it->has_ammo ? 1.0 : 0.4;
+		wheel_title.text = @( it->name );
+		if( it->clip >= 0 && it->reserve >= 0 )
+			wheel_ammo.text = [NSString stringWithFormat:@"%d  |  %d", it->clip, it->reserve];
+		else if( it->reserve >= 0 )
+			wheel_ammo.text = it->has_ammo ? [NSString stringWithFormat:@"%d", it->reserve] : @"No ammo";
+		else wheel_ammo.text = @"";
 	}
 }
 
@@ -1443,7 +1460,7 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 	wheel_pick = -1;
 	wheel_ref = start;
 	wheel_center = CGPointMake( size.width * 0.5, size.height * 0.5 );
-	wheel_r1 = MIN( IOSTOUCH_WHEEL_R1_MAX, size.height * 0.5 - 12.0 );
+	wheel_r1 = MIN( IOSTOUCH_WHEEL_R1_MAX, size.height * 0.47 );
 	wheel_r0 = wheel_r1 * IOSTOUCH_WHEEL_R0_FRAC;
 
 	[wheel removeFromSuperview];
@@ -1451,64 +1468,84 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 	wheel = [[UIView alloc] initWithFrame:self.bounds];
 	wheel.userInteractionEnabled = NO;
 
-	CAShapeLayer *disc = [CAShapeLayer layer];
-	disc.path = [UIBezierPath bezierPathWithArcCenter:wheel_center radius:wheel_r1 + 4 startAngle:0 endAngle:2 * M_PI clockwise:YES].CGPath;
-	disc.fillColor = [UIColor colorWithWhite:0.0 alpha:0.55].CGColor;
-	[wheel.layer addSublayer:disc];
+	// frosted glass under the ring, a dark disc in the middle
+	UIBezierPath *ring = [UIBezierPath bezierPathWithArcCenter:wheel_center radius:wheel_r1 + 6 startAngle:0 endAngle:2 * M_PI clockwise:YES];
+	UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+	UIVisualEffectView *glass = [[[UIVisualEffectView alloc] initWithEffect:blur] autorelease];
+	CAShapeLayer *mask = [CAShapeLayer layer];
+
+	glass.frame = wheel.bounds;
+	mask.path = ring.CGPath;
+	glass.layer.mask = mask;
+	[wheel addSubview:glass];
+
+	CAShapeLayer *tint = [CAShapeLayer layer];
+	tint.path = ring.CGPath;
+	tint.fillColor = [UIColor colorWithWhite:0.0 alpha:0.35].CGColor;
+	tint.strokeColor = HudOrange( 0.55 ).CGColor;
+	tint.lineWidth = 1.5;
+	[wheel.layer addSublayer:tint];
+
+	CAShapeLayer *hub = [CAShapeLayer layer];
+	hub.path = [UIBezierPath bezierPathWithArcCenter:wheel_center radius:wheel_r0 - 4 startAngle:0 endAngle:2 * M_PI clockwise:YES].CGPath;
+	hub.fillColor = [UIColor colorWithWhite:0.0 alpha:0.45].CGColor;
+	hub.strokeColor = HudOrange( 0.35 ).CGColor;
+	hub.lineWidth = 1.0;
+	[wheel.layer addSublayer:hub];
 
 	for( int i = 0; i < wheel_n; i++ )
 	{
 		const ios_wheel_item_t *it = &wheel_items[i];
-		CGFloat a0, a1, cw, ch;
+		CGFloat a0, a1, cw, ch, chord;
 		UIImage *icon = [self iconFor:it];
 		UIView *cell;
-		UILabel *ammo;
 		NSString *count = nil;
 
 		wheel_slices[i] = [CAShapeLayer layer];
-		wheel_slices[i].lineWidth = 1.5;
 		[wheel.layer addSublayer:wheel_slices[i]];
 
-		// the icon and the ammo, fitted to the slice
+		// the icon as big as the slice allows (HUD icons are wide, about
+		// 4:1), the ammo under it
 		WheelSlice( i, &a0, &a1 );
-		cw = MIN( wheel_r1 - wheel_r0, ( wheel_r0 + wheel_r1 ) * 0.5 * ( a1 - a0 ) * M_PI / 180.0 ) * 0.92;
-		ch = cw * 0.62;
-		cell = [[[UIView alloc] initWithFrame:CGRectMake( 0, 0, cw, ch )] autorelease];
+		chord = 2.0 * ( wheel_r0 + wheel_r1 ) * 0.5 * sin(( a1 - a0 ) * 0.5 * M_PI / 180.0 );
+		cw = MIN( wheel_r1 - wheel_r0 - 8.0, chord * 1.15 );
+		ch = MIN( cw * 0.42, chord * 0.62 );
+		cell = [[[UIView alloc] initWithFrame:CGRectMake( 0, 0, cw, ch + 14 )] autorelease];
 		cell.alpha = it->has_ammo ? 1.0 : 0.35;
 
 		if( icon )
 		{
 			UIImageView *iv = [[[UIImageView alloc] initWithImage:icon] autorelease];
 			iv.contentMode = UIViewContentModeScaleAspectFit;
-			iv.frame = CGRectMake( 0, 0, cw, ch * 0.7 );
+			iv.frame = CGRectMake( 0, 0, cw, ch );
+			iv.layer.shadowColor = HudOrange( 1.0 ).CGColor;
+			iv.layer.shadowRadius = 4;
+			iv.layer.shadowOpacity = 0.5;
+			iv.layer.shadowOffset = CGSizeZero;
 			[cell addSubview:iv];
 		}
 		else
 		{
-			UILabel *name = [[[UILabel alloc] initWithFrame:CGRectMake( 0, 0, cw, ch * 0.7 )] autorelease];
+			UILabel *name = [[[UILabel alloc] initWithFrame:CGRectMake( 0, 0, cw, ch )] autorelease];
 			name.text = @( it->name );
 			name.textColor = HudOrange( 1.0 );
-			name.font = [UIFont boldSystemFontOfSize:11];
+			name.font = [UIFont boldSystemFontOfSize:13];
 			name.textAlignment = NSTextAlignmentCenter;
 			name.adjustsFontSizeToFitWidth = YES;
 			name.minimumScaleFactor = 0.5;
 			[cell addSubview:name];
 		}
 
-		if( it->clip >= 0 && it->reserve >= 0 )
-			count = [NSString stringWithFormat:@"%d | %d", it->clip, it->reserve];
-		else if( it->reserve >= 0 )
-			count = [NSString stringWithFormat:@"%d", it->reserve];
+		if( it->reserve >= 0 )
+			count = [NSString stringWithFormat:@"%d", it->reserve + ( it->clip > 0 ? it->clip : 0 )];
 
 		if( count )
 		{
-			ammo = [[[UILabel alloc] initWithFrame:CGRectMake( 0, ch * 0.7, cw, ch * 0.3 )] autorelease];
+			UILabel *ammo = [[[UILabel alloc] initWithFrame:CGRectMake( 0, ch, cw, 14 )] autorelease];
 			ammo.text = count;
-			ammo.textColor = HudOrange( 0.95 );
-			ammo.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightBold];
+			ammo.textColor = [UIColor colorWithWhite:1.0 alpha:0.85];
+			ammo.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightSemibold];
 			ammo.textAlignment = NSTextAlignmentCenter;
-			ammo.adjustsFontSizeToFitWidth = YES;
-			ammo.minimumScaleFactor = 0.6;
 			[cell addSubview:ammo];
 		}
 
@@ -1516,15 +1553,31 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 		[wheel addSubview:cell];
 	}
 
-	wheel_title = [[[UILabel alloc] initWithFrame:CGRectMake( 0, 0, wheel_r0 * 1.9, 40 )] autorelease];
-	wheel_title.center = wheel_center;
+	// the middle
+	wheel_big = [[[UIImageView alloc] initWithFrame:CGRectMake( 0, 0, wheel_r0 * 1.6, wheel_r0 * 0.55 )] autorelease];
+	wheel_big.center = CGPointMake( wheel_center.x, wheel_center.y - wheel_r0 * 0.22 );
+	wheel_big.contentMode = UIViewContentModeScaleAspectFit;
+	wheel_big.layer.shadowColor = HudOrange( 1.0 ).CGColor;
+	wheel_big.layer.shadowRadius = 8;
+	wheel_big.layer.shadowOpacity = 0.7;
+	wheel_big.layer.shadowOffset = CGSizeZero;
+	[wheel addSubview:wheel_big];
+
+	wheel_title = [[[UILabel alloc] initWithFrame:CGRectMake( 0, 0, wheel_r0 * 1.7, 20 )] autorelease];
+	wheel_title.center = CGPointMake( wheel_center.x, wheel_center.y + wheel_r0 * 0.25 );
 	wheel_title.textAlignment = NSTextAlignmentCenter;
-	wheel_title.numberOfLines = 2;
 	wheel_title.textColor = HudOrange( 1.0 );
-	wheel_title.font = [UIFont boldSystemFontOfSize:15];
+	wheel_title.font = [UIFont systemFontOfSize:16 weight:UIFontWeightHeavy];
 	wheel_title.adjustsFontSizeToFitWidth = YES;
 	wheel_title.minimumScaleFactor = 0.6;
 	[wheel addSubview:wheel_title];
+
+	wheel_ammo = [[[UILabel alloc] initWithFrame:CGRectMake( 0, 0, wheel_r0 * 1.7, 16 )] autorelease];
+	wheel_ammo.center = CGPointMake( wheel_center.x, wheel_center.y + wheel_r0 * 0.5 );
+	wheel_ammo.textAlignment = NSTextAlignmentCenter;
+	wheel_ammo.textColor = [UIColor colorWithWhite:1.0 alpha:0.85];
+	wheel_ammo.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightSemibold];
+	[wheel addSubview:wheel_ammo];
 
 	[self insertSubview:wheel belowSubview:toast];
 	[self showWheelPick];

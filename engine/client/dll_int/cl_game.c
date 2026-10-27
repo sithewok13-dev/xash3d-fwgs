@@ -329,19 +329,21 @@ draw hudsprite routine
 CL_IOSHudRect
 
 iOS: the HUD's part of the screen, in pixels: clear of the rounded corners
-and the home bar (part of the side insets, all of the bottom one)
+and the home bar (part of the insets), and below the touch controls' top
+row of buttons (the top 15% of the screen)
 =================
 */
 static void CL_IOSHudRect( float *x, float *y, float *w, float *h )
 {
-	float left = refState.width * host.window_insets[0] * 0.6f;
-	float right = refState.width * host.window_insets[2] * 0.6f;
-	float bottom = refState.height * host.window_insets[3];
+	float left = refState.width * host.window_insets[0] * 0.35f;
+	float right = refState.width * host.window_insets[2] * 0.35f;
+	float bottom = refState.height * host.window_insets[3] * 0.5f;
+	float top = refState.height * 0.15f;
 
 	*x = left;
-	*y = 0.0f;
+	*y = top;
 	*w = refState.width - left - right;
-	*h = refState.height - bottom;
+	*h = refState.height - top - bottom;
 }
 #endif
 
@@ -891,11 +893,24 @@ static void CL_DrawCrosshair( void )
 	}
 
 	// back to logical sizes
+#if XASH_IOS
+	{
+		// the HUD is a part of the screen there, see CL_IOSHudRect
+		float hx, hy, hw, hh;
+
+		CL_IOSHudRect( &hx, &hy, &hw, &hh );
+		xscale = (float)clgame.scrInfo.iWidth / hw;
+		yscale = (float)clgame.scrInfo.iHeight / hh;
+		x = ( x - hx ) * xscale;
+		y = ( y - hy ) * yscale;
+	}
+#else
 	xscale = (float)clgame.scrInfo.iWidth / refState.width;
 	yscale = (float)clgame.scrInfo.iHeight / refState.height;
 
 	x *= xscale;
 	y *= yscale;
+#endif
 
 	// move at center the screen
 	x -= 0.5f * width;
@@ -1705,9 +1720,9 @@ int GAME_EXPORT CL_GetScreenInfo( SCREENINFO *pscrinfo )
 
 #if XASH_IOS
 	{
-		// iOS: the HUD sized for a phone's dense screen (about 400 lines
-		// tall, as HL's HUD was drawn for 480) unless hud_scale says
-		// otherwise, inside the safe part of the screen (SPR_AdjustSize)
+		// iOS: the HUD sized for a phone's dense screen (as if the whole
+		// screen were 480 lines tall, as HL's HUD was drawn for) unless
+		// hud_scale says otherwise, inside the safe part (SPR_AdjustSize)
 		float hx, hy, hw, hh, scale;
 
 		CL_IOSHudRect( &hx, &hy, &hw, &hh );
@@ -1716,7 +1731,7 @@ int GAME_EXPORT CL_GetScreenInfo( SCREENINFO *pscrinfo )
 			scale = hw / hud_scale.value;
 		else if( hud_scale.value > 0.0f )
 			scale = hud_scale.value;
-		else scale = hh / 400.0f;
+		else scale = refState.height / 480.0f;
 
 		scale = Q_max( 1.0f, Q_min( scale, hw / 640.0f ));
 

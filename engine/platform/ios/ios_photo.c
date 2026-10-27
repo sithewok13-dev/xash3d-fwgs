@@ -24,6 +24,7 @@ GNU General Public License for more details.
 #include "client.h"
 #include "server.h"
 #include "pm_defs.h"
+#include "studio.h"
 #include "ios_touch.h"
 
 #define PHOTO_MAX_PENDING 16
@@ -83,6 +84,11 @@ static struct
 
 	posed_t posed[PHOTO_MAX_POSED];
 	int num_posed;
+
+	// the player's pose in selfies: a sequence of the player model held
+	// on one frame (-1: as they stand)
+	int pose_seq;
+	int pose_frame;
 } photo;
 
 static qboolean IOS_PhotoSinglePlayer( void )
@@ -236,12 +242,98 @@ static void IOS_PhotoUnpose( void )
 	photo.num_posed = 0;
 }
 
+// Poses for selfies, from the animations every HL player model shares;
+// those a model doesn't have are skipped
+static const char *photo_poses[] =
+{
+	"crouch_idle", "jump", "long_jump", "swim", "treadwater", "deep_idle",
+	"ref_aim_crowbar", "ref_shoot_crowbar", "ref_aim_python", "ref_shoot_python",
+	"ref_aim_shotgun", "ref_shoot_shotgun", "ref_aim_mp5", "crouch_aim_mp5",
+	"ref_aim_crossbow", "ref_aim_rpg", "crouch_aim_rpg", "ref_aim_gauss",
+	"ref_aim_egon", "ref_aim_squeak", "ref_aim_trip", "ref_aim_onehanded",
+	"crouch_aim_onehanded", "ref_aim_hive", "crouch_aim_crowbar",
+};
+
+static int IOS_PhotoFindSequence( model_t *model, const char *name, int *numframes )
+{
+	studiohdr_t *hdr;
+	mstudioseqdesc_t *seq;
+	int i;
+
+	if( !model || model->type != mod_studio || !( hdr = (studiohdr_t *)Mod_StudioExtradata( model )))
+		return -1;
+
+	seq = (mstudioseqdesc_t *)((byte *)hdr + hdr->seqindex );
+	for( i = 0; i < hdr->numseq; i++ )
+	{
+		if( !Q_stricmp( seq[i].label, name ))
+		{
+			*numframes = seq[i].numframes;
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+// a new random pose, different from the last
+static void IOS_PhotoPickPose( void )
+{
+	cl_entity_t *player = CL_GetLocalPlayer( );
+	int tries, numframes = 1;
+
+	photo.pose_seq = -1;
+	if( !player )
+		return;
+
+	for( tries = 0; tries < 16; tries++ )
+	{
+		int seq = IOS_PhotoFindSequence( player->model, photo_poses[COM_RandomLong( 0, ARRAYSIZE( photo_poses ) - 1 )], &numframes );
+
+		if( seq >= 0 && seq != player->curstate.sequence )
+		{
+			photo.pose_seq = seq;
+			// somewhere in the middle of the move, where it's most a pose
+			photo.pose_frame = COM_RandomLong( 64, 192 );
+			return;
+		}
+	}
+}
+
+// held while the camera is up: the HUD's renderer draws the player from
+// the entity's sequence and the player state's gait (legs) sequence
+static void IOS_PhotoApplyPose( void )
+{
+	cl_entity_t *player = CL_GetLocalPlayer( );
+
+	if( !player || photo.pose_seq < 0 )
+		return;
+
+	player->curstate.sequence = photo.pose_seq;
+	player->curstate.frame = photo.pose_frame;
+	player->curstate.framerate = 0.0f;
+	player->curstate.gaitsequence = 0;
+	player->latched.prevsequence = photo.pose_seq;
+	player->latched.prevframe = photo.pose_frame;
+	player->latched.sequencetime = 0.0f; // no blending from the last move
+
+	if( cl.frames[cl.parsecountmod].valid )
+	{
+		entity_state_t *ps = &cl.frames[cl.parsecountmod].playerstate[cl.playernum];
+		ps->sequence = photo.pose_seq;
+		ps->frame = photo.pose_frame;
+		ps->framerate = 0.0f;
+		ps->gaitsequence = 0;
+	}
+}
+
 static void IOS_PhotoBegin( cam_mode_t mode )
 {
 	vec3_t eyes;
 
 	IOS_PhotoEyes( eyes );
 	photo.mode = mode;
+	photo.pose_seq = -1;
 	photo.fov = mode == CAM_FREEZE ? cl.local.scr_fov : SELFIE_FOV;
 	VectorClear( photo.pan );
 	VectorCopy( eyes, photo.target );
@@ -276,6 +368,7 @@ int IOS_PhotoSelfieBegin( void )
 		return 0;
 
 	IOS_PhotoBegin( CAM_SELFIE );
+	IOS_PhotoPickPose( );
 	IOS_PhotoEyes( eyes );
 	photo.base_yaw = cl.viewangles[YAW];
 
@@ -317,6 +410,10 @@ void IOS_PhotoSelfieShot( int i, int n )
 		return;
 
 	photo.yaw = photo.base_yaw + ( i - ( n - 1 ) * 0.5f ) * 18.0f;
+
+	// a new pose for each shot after the first
+	if( i > 0 )
+		IOS_PhotoPickPose( );
 }
 
 int IOS_PhotoFreezeBegin( void )
@@ -457,6 +554,7 @@ void IOS_PhotoCalcRefdef( ref_params_t *rp )
 	cl.local.scr_fov = photo.fov;
 
 	IOS_PhotoPose( camera );
+	IOS_PhotoApplyPose( );
 }
 
 int IOS_PhotoThirdPerson( void )
