@@ -335,8 +335,8 @@ row of buttons (the top 15% of the screen)
 */
 static void CL_IOSHudRect( float *x, float *y, float *w, float *h )
 {
-	float left = refState.width * host.window_insets[0] * 0.35f;
-	float right = refState.width * host.window_insets[2] * 0.35f;
+	float left = refState.width * host.window_insets[0] * 0.5f;
+	float right = refState.width * host.window_insets[2] * 0.5f;
 	float bottom = refState.height * host.window_insets[3] * 0.5f;
 	float top = refState.height * 0.15f;
 
@@ -621,6 +621,27 @@ static void CL_DrawScreenFade( void )
 		R_GetBuiltinTexture( REF_WHITE_TEXTURE ));
 	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
 }
+
+#if XASH_IOS
+/*
+=============
+CL_IOSScreenFaded
+
+iOS: the screen is covered by a fade (a chapter's start, a flash), so the
+touch controls stay off it. Not a fade that stays out: those can last
+until the player does something, as at the end of the game
+=============
+*/
+qboolean CL_IOSScreenFaded( void )
+{
+	screenfade_t *sf = &clgame.fade;
+
+	if( FBitSet( sf->fadeFlags, FFADE_MODULATE|FFADE_STAYOUT ))
+		return false;
+
+	return V_FadeAlpha( sf ) >= 200;
+}
+#endif
 
 /*
 ====================

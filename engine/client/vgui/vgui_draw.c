@@ -244,12 +244,24 @@ static void GAME_EXPORT VGUI_EnableTexture( qboolean enable )
 
 static void GAME_EXPORT VGUI_SetPaintOffset( int x, int y )
 {
+#if XASH_IOS
+	// a distance, scaled as the HUD is but not moved with it: SPR_AdjustSize
+	// places the HUD's 0,0 at the safe area's corner, and that corner must
+	// not become an offset of all 2D drawing (the menu, fades, the HUD)
+	float fx = 0.0f, fy = 0.0f, fw = x, fh = y;
+
+	Vector2Set( vgui.paint_offset, x, y );
+
+	SPR_AdjustSize( &fx, &fy, &fw, &fh );
+	ref.dllFuncs.R_Set2DOffset( fw, fh );
+#else
 	float fx = x, fy = y, fw = 0.0f, fh = 0.0f;
 
 	Vector2Set( vgui.paint_offset, x, y );
 
 	SPR_AdjustSize( &fx, &fy, &fw, &fh );
 	ref.dllFuncs.R_Set2DOffset( fx, fy );
+#endif
 }
 
 static void GAME_EXPORT *VGUI_EngineMalloc( size_t size )

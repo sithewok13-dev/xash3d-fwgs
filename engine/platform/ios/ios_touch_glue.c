@@ -28,7 +28,7 @@ static unsigned int ios_touch_held;
 
 static qboolean IOS_TouchInGame( void )
 {
-	return cls.state == ca_active && cls.key_dest == key_game && !cl.background && !Con_Visible( );
+	return cls.state == ca_active && cls.key_dest == key_game && !cl.background && !Con_Visible( ) && !CL_IOSScreenFaded( );
 }
 
 static void IOS_TouchRunAction( int action )
@@ -103,6 +103,99 @@ void IOS_TouchFrame( void )
 
 	while(( action = IOSTouch_PopAction( )) != IOSTOUCH_ACT_NONE )
 		IOS_TouchRunAction( action );
+}
+
+// TAPS: the last place each finger went down, as the game got it (0..1 of
+// the screen), drawn as a red cross over everything, menus included
+#define IOS_TAPS_MAX  4
+#define IOS_TAPS_TIME 1.5
+
+static struct
+{
+	int finger;
+	float x, y;
+	double up_time; // 0 while down
+	qboolean used;
+} ios_taps[IOS_TAPS_MAX];
+
+void IOS_TouchDebugEvent( int down, int up, int finger, float x, float y )
+{
+	int i, slot = -1;
+
+	if( !IOSTouch_ShowTaps( ))
+		return;
+
+	for( i = 0; i < IOS_TAPS_MAX; i++ )
+	{
+		if( ios_taps[i].used && ios_taps[i].finger == finger && !ios_taps[i].up_time )
+			slot = i;
+	}
+
+	if( down || slot < 0 )
+	{
+		double oldest = host.realtime + 1.0;
+
+		// a free slot, or the one let go longest ago
+		for( i = 0, slot = 0; i < IOS_TAPS_MAX; i++ )
+		{
+			double t = ios_taps[i].used ? ( ios_taps[i].up_time ? ios_taps[i].up_time : host.realtime ) : -1.0;
+
+			if( t < oldest )
+			{
+				oldest = t;
+				slot = i;
+			}
+		}
+	}
+
+	ios_taps[slot].used = true;
+	ios_taps[slot].finger = finger;
+	ios_taps[slot].x = x;
+	ios_taps[slot].y = y;
+	ios_taps[slot].up_time = up ? host.realtime : 0.0;
+}
+
+void IOS_TouchDebugDraw( void )
+{
+	int i;
+
+	if( !IOSTouch_ShowTaps( ))
+		return;
+
+	for( i = 0; i < IOS_TAPS_MAX; i++ )
+	{
+		const int arm = 36, thick = 4;
+		float x, y;
+		int alpha;
+		char text[32];
+		rgba_t color;
+
+		if( !ios_taps[i].used )
+			continue;
+
+		alpha = 255;
+		if( ios_taps[i].up_time )
+		{
+			double age = host.realtime - ios_taps[i].up_time;
+
+			if( age >= IOS_TAPS_TIME )
+			{
+				ios_taps[i].used = false;
+				continue;
+			}
+			alpha = 255 * ( 1.0 - age / IOS_TAPS_TIME );
+		}
+
+		x = ios_taps[i].x * refState.width;
+		y = ios_taps[i].y * refState.height;
+
+		ref.dllFuncs.FillRGBA( kRenderTransTexture, x - arm, y - thick / 2, arm * 2, thick, 255, 40, 40, alpha );
+		ref.dllFuncs.FillRGBA( kRenderTransTexture, x - thick / 2, y - arm, thick, arm * 2, 255, 40, 40, alpha );
+
+		Q_snprintf( text, sizeof( text ), "%d,%d", (int)x, (int)y );
+		MakeRGBA( color, 255, 80, 80, alpha );
+		Con_DrawString( x + 8, y + 8, text, color );
+	}
 }
 
 void IOS_TouchGetMove( float *pitch, float *yaw )

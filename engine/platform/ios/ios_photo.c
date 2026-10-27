@@ -251,12 +251,12 @@ static void IOS_PhotoUnpose( void )
 // those a model doesn't have are skipped
 static const char *photo_poses[] =
 {
-	"crouch_idle", "jump", "long_jump", "swim", "treadwater", "deep_idle",
+	"jump", "long_jump", "longjump", "look_idle", "deep_idle",
 	"ref_aim_crowbar", "ref_shoot_crowbar", "ref_aim_python", "ref_shoot_python",
 	"ref_aim_shotgun", "ref_shoot_shotgun", "ref_aim_mp5", "crouch_aim_mp5",
-	"ref_aim_crossbow", "ref_aim_rpg", "crouch_aim_rpg", "ref_aim_gauss",
+	"ref_aim_bow", "ref_aim_crossbow", "ref_aim_rpg", "crouch_aim_rpg", "ref_aim_gauss",
 	"ref_aim_egon", "ref_aim_squeak", "ref_aim_trip", "ref_aim_onehanded",
-	"crouch_aim_onehanded", "ref_aim_hive", "crouch_aim_crowbar",
+	"ref_shoot_onehanded", "crouch_aim_onehanded", "ref_aim_hive",
 };
 
 static int IOS_PhotoFindSequence( model_t *model, const char *name, int *numframes )
@@ -289,6 +289,29 @@ static const char *IOS_PhotoSequenceName( model_t *model, int seq )
 		return "";
 
 	return ((mstudioseqdesc_t *)((byte *)hdr + hdr->seqindex ))[seq].label;
+}
+
+// The up and down aim of a player model's move comes from its blend, set
+// from the view's pitch while the legs run their own move: with the legs
+// still for a pose, the blend that holds the head level, looking into the
+// camera (0 is aiming at the floor)
+static int IOS_PhotoLevelBlend( model_t *model, int seq )
+{
+	studiohdr_t *hdr;
+	mstudioseqdesc_t *desc;
+	float start, end;
+
+	if( !model || model->type != mod_studio || !( hdr = (studiohdr_t *)Mod_StudioExtradata( model )) || seq < 0 || seq >= hdr->numseq )
+		return 127;
+
+	desc = (mstudioseqdesc_t *)((byte *)hdr + hdr->seqindex ) + seq;
+	start = desc->blendstart[0];
+	end = desc->blendend[0];
+
+	if( desc->numblends <= 1 || end - start < 0.1f )
+		return 127;
+
+	return bound( 0, (int)( 255.0f * ( 0.0f - start ) / ( end - start )), 255 );
 }
 
 // a new random pose, different from the last
@@ -360,6 +383,18 @@ static void IOS_PhotoApplyPose( const vec3_t camera )
 
 		if( cl.frames[cl.parsecountmod].valid )
 			cl.frames[cl.parsecountmod].playerstate[cl.playernum].gaitsequence = 0;
+	}
+
+	// the head level, whatever the view's pitch was
+	{
+		int blend = IOS_PhotoLevelBlend( player->model, photo.pose_seq >= 0 ? photo.pose_seq : player->curstate.sequence );
+
+		player->curstate.blending[0] = blend;
+		player->latched.prevblending[0] = blend;
+		player->latched.prevseqblending[0] = blend;
+
+		if( cl.frames[cl.parsecountmod].valid )
+			cl.frames[cl.parsecountmod].playerstate[cl.playernum].blending[0] = blend;
 	}
 
 	if( photo.pose_seq < 0 )

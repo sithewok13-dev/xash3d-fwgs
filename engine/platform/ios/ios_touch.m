@@ -22,6 +22,7 @@ GNU General Public License for more details.
 // Objective-C; the overlay lives for the whole process.
 
 #import <UIKit/UIKit.h>
+#import <UIKit/UIGestureRecognizerSubclass.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreMotion/CoreMotion.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -122,6 +123,7 @@ GNU General Public License for more details.
 #define KEY_GYRO_SENS @"iosTouchGyroSens"
 #define KEY_LOOK_SENS @"iosTouchLookSens"
 #define KEY_SHOW_FPS  @"iosTouchShowFps"
+#define KEY_SHOW_TAPS @"iosTouchShowTaps"
 #define KEY_SWAPPED   @"iosTouchSwapped"
 #define KEY_SHOW_CHEAT @"iosTouchShowCheat"
 #define KEY_SHOW_CAMERA @"iosTouchShowCamera"
@@ -152,6 +154,7 @@ typedef enum
 	BTN_TRAY_GYRO,
 	BTN_TRAY_SENS,
 	BTN_TRAY_FPS,
+	BTN_TRAY_TAPS,
 	BTN_TRAY_CAM,
 	BTN_TRAY_CHEAT,
 	BTN_TRAY_LEVEL,
@@ -212,6 +215,7 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_TRAY_GYRO] = { "GYRO",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
+[BTN_TRAY_TAPS] = { "TAPS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_CAM]  = { "CAMERA",       KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_CHEAT] = { "CHEAT",       KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_LEVEL] = { "LEVEL",       KIND_LEVEL,   0,                      20, 0, ROW_TRAY, IOSTOUCH_LEVEL_HOLD },
@@ -249,7 +253,7 @@ static int gyro_smooth_next;
 // main thread state
 static int gyro_mode = GYRO_OFF, gyro_last_mode = GYRO_TOUCH, gyro_sens_i = 1;
 static int look_sens_i = 2;
-static int show_fps, swapped, show_cheat, cheat_on;
+static int show_fps, show_taps, swapped, show_cheat, cheat_on;
 static int level_counting, level_index;
 static int show_camera = 1, camera_kinds = IOSTOUCH_PHOTO_CLEAN, selfie_shots = 3, freeze_on = 1, cam_row_open;
 
@@ -438,6 +442,7 @@ static void LoadSettings( void )
 	}
 
 	show_fps = (int)[d boolForKey:KEY_SHOW_FPS];
+	show_taps = (int)[d boolForKey:KEY_SHOW_TAPS];
 	show_cheat = (int)[d boolForKey:KEY_SHOW_CHEAT];
 
 	if( [d objectForKey:KEY_SHOW_CAMERA] )
@@ -721,6 +726,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	btn_lit[BTN_TRAY_GYRO] = gyro_mode != GYRO_OFF;
 	btn_lit[BTN_TRAY_FPS] = show_fps;
+	btn_lit[BTN_TRAY_TAPS] = show_taps;
 	btn_lit[BTN_TRAY_CTRL] = swapped;
 	btn_lit[BTN_TRAY_CHEAT] = show_cheat;
 	btn_lit[BTN_TRAY_CAM] = show_camera;
@@ -827,7 +833,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)updateShown
 {
-	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_FPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
+	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_FPS, BTN_TRAY_TAPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
 	static const int camrow[] = { BTN_CAM_CLEAN, BTN_CAM_HUD, BTN_CAM_BTNS, BTN_CAM_SELFIES, BTN_CAM_FREEZE };
 	CGFloat top = [self topRowY];
 	int n = 0;
@@ -1131,6 +1137,11 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		show_fps = !show_fps;
 		[[NSUserDefaults standardUserDefaults] setBool:show_fps forKey:KEY_SHOW_FPS];
 		QueueAction( show_fps ? IOSTOUCH_ACT_SHOWFPS : IOSTOUCH_ACT_HIDEFPS );
+		break;
+	case BTN_TRAY_TAPS:
+		show_taps = !show_taps;
+		[[NSUserDefaults standardUserDefaults] setBool:show_taps forKey:KEY_SHOW_TAPS];
+		[self showToast:show_taps ? @"Taps shown: white ring = your finger, red cross = the game's tap" : @"Taps hidden"];
 		break;
 	case BTN_TRAY_CTRL:
 		swapped = !swapped;
@@ -2256,7 +2267,96 @@ static IOSTouchOverlay *overlay;
 // touches for a moment, so a second tap on MENU can't land on the menu's
 // own buttons under it (its quit X sits right there)
 #define IOSTOUCH_HIDE_GRACE 0.5
+#define IOSTOUCH_SHOW_TIME  0.35
 static CFTimeInterval hide_grace_until;
+
+// TAPS: where each touch really went down (a white ring, here) next to
+// where the game got it (a red cross, drawn by the engine), to check that
+// taps land where they should, in the menus above all. A recognizer on
+// the window sees every touch without taking any from SDL or the buttons.
+static UIView *taps_view;
+
+@interface IOSTapProbe : UIGestureRecognizer <UIGestureRecognizerDelegate>
+@end
+
+@implementation IOSTapProbe
+- (instancetype)init
+{
+	if(( self = [super initWithTarget:nil action:NULL] ))
+	{
+		self.cancelsTouchesInView = NO;
+		self.delaysTouchesBegan = NO;
+		self.delaysTouchesEnded = NO;
+		self.delegate = self;
+	}
+	return self;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)g shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other
+{
+	return YES;
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
+{
+	[super touchesBegan:touches withEvent:event];
+
+	if( !show_taps || !taps_view )
+		return;
+
+	for( UITouch *t in touches )
+	{
+		CGPoint p = [t locationInView:taps_view];
+		CAShapeLayer *ring = [CAShapeLayer layer];
+		CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+
+		ring.frame = CGRectMake( p.x - 22, p.y - 22, 44, 44 );
+		ring.path = [UIBezierPath bezierPathWithOvalInRect:CGRectMake( 2, 2, 40, 40 )].CGPath;
+		ring.fillColor = [UIColor colorWithWhite:1.0 alpha:0.15].CGColor;
+		ring.strokeColor = [UIColor whiteColor].CGColor;
+		ring.lineWidth = 2.5;
+		ring.opacity = 0.0;
+
+		fade.fromValue = @1.0;
+		fade.toValue = @0.0;
+		fade.duration = 1.5;
+
+		[CATransaction begin];
+		[CATransaction setCompletionBlock:^{ [ring removeFromSuperlayer]; }];
+		[taps_view.layer addSublayer:ring];
+		[ring addAnimation:fade forKey:@"fade"];
+		[CATransaction commit];
+	}
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
+{
+	[super touchesEnded:touches withEvent:event];
+	[self allUp:event];
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
+{
+	[super touchesCancelled:touches withEvent:event];
+	[self allUp:event];
+}
+
+// never a gesture: once every finger is up it gives up, to start again
+- (void)allUp:(UIEvent *)event
+{
+	for( UITouch *t in [event allTouches] )
+	{
+		if( t.phase != UITouchPhaseEnded && t.phase != UITouchPhaseCancelled )
+			return;
+	}
+	self.state = UIGestureRecognizerStateFailed;
+}
+@end
+
+int IOSTouch_ShowTaps( void )
+{
+	return show_taps;
+}
 
 static UIView *HostView( void *window )
 {
@@ -2349,6 +2449,33 @@ void IOSTouch_Frame( void *window, int ingame )
 		}
 		[host bringSubviewToFront:overlay];
 
+		if( !taps_view )
+		{
+			taps_view = [[UIView alloc] initWithFrame:host.bounds];
+			taps_view.userInteractionEnabled = NO;
+			taps_view.backgroundColor = [UIColor clearColor];
+		}
+		if( taps_view.superview != host )
+		{
+			[taps_view removeFromSuperview];
+			[host addSubview:taps_view];
+		}
+		taps_view.frame = host.bounds;
+		[host bringSubviewToFront:taps_view];
+
+		if( host.window )
+		{
+			static UIWindow *probed;
+
+			if( probed != host.window )
+			{
+				IOSTapProbe *probe = [[IOSTapProbe alloc] init];
+				[host.window addGestureRecognizer:probe];
+				[probe release];
+				probed = host.window;
+			}
+		}
+
 		if( ingame != overlay_shown )
 		{
 			overlay_shown = ingame;
@@ -2361,9 +2488,14 @@ void IOSTouch_Frame( void *window, int ingame )
 			}
 			else
 			{
+				// back in: the buttons fade in (after a fade-in from black,
+				// a chapter's start, they come up as the scene does)
 				hide_grace_until = 0;
-				overlay.alpha = 1.0;
+				if( overlay.hidden )
+					overlay.alpha = 0.0;
 				overlay.hidden = NO;
+				[UIView animateWithDuration:IOSTOUCH_SHOW_TIME delay:0 options:UIViewAnimationOptionBeginFromCurrentState
+					animations:^{ overlay.alpha = 1.0; } completion:nil];
 			}
 		}
 

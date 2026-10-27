@@ -65,6 +65,9 @@ void IOSTouch_TakeLook( float *yaw, float *pitch );
 // The console word "sithewok": switches the cheat, and shows its button
 void IOSTouch_ToggleCheat( void );
 
+// TAPS: the touch debugging marks are on
+int IOSTouch_ShowTaps( void );
+
 // engine side (ios_touch_glue.c)
 void IOS_TouchFrame( void );
 void IOS_TouchGetMove( float *pitch, float *yaw );

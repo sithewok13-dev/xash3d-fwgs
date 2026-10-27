@@ -60,6 +60,8 @@ void IOS_LaunchDialog( void );
 void IOS_GetWindowInsets( void *window, float insets[4] );
 void IOS_TouchFrame( void );
 void IOS_TouchGetMove( float *pitch, float *yaw );
+void IOS_TouchDebugEvent( int down, int up, int finger, float x, float y );
+void IOS_TouchDebugDraw( void );
 struct ref_params_s;
 void IOS_PhotoCalcRefdef( struct ref_params_s *rp );
 int IOS_PhotoThirdPerson( void );

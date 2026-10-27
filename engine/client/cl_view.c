@@ -587,6 +587,9 @@ void V_PostRender( void )
 		Con_DrawDebug(); // must be last
 		Touch_Draw();
 		OSK_Draw();
+#if XASH_IOS
+		IOS_TouchDebugDraw();
+#endif
 
 		S_ExtraUpdate();
 	}

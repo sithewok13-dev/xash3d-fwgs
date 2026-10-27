@@ -2224,6 +2224,10 @@ int IN_TouchEvent( touchEventType type, int fingerID, float x, float y, float dx
 			dy = temp;
 	}
 
+#if XASH_IOS
+	// TAPS: where the game gets each touch
+	IOS_TouchDebugEvent( type == event_down, type == event_up, fingerID, x, y );
+#endif
 
 	if( cls.key_dest == key_game && cls.state == ca_cinematic )
 	{
