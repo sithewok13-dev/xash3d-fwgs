@@ -101,6 +101,7 @@ static int num_chapters;
 static char chapters_game[MAX_QPATH];
 
 static qboolean cheat_on;
+static char saved_sv_cheats[16];
 static int cheat_servercount = -1;
 
 static edict_t *IOS_CheatPlayer( void )
@@ -162,6 +163,8 @@ const char *IOS_LevelTitle( int i )
 
 static void IOS_ApplyCheat( edict_t *ent, qboolean give )
 {
+	if( !saved_sv_cheats[0] )
+		Q_strncpy( saved_sv_cheats, Cvar_VariableString( "sv_cheats" ), sizeof( saved_sv_cheats ));
 	Cvar_Set( "sv_cheats", "1" );
 	SetBits( ent->v.flags, FL_GODMODE );
 
@@ -188,7 +191,9 @@ void IOS_CheatSet( int on )
 	ClearBits( ent->v.flags, FL_GODMODE|FL_NOTARGET );
 	if( ent->v.movetype == MOVETYPE_NOCLIP )
 		ent->v.movetype = MOVETYPE_WALK;
-	Cvar_Set( "sv_cheats", "0" );
+	// as it was before the cheat
+	Cvar_Set( "sv_cheats", saved_sv_cheats[0] ? saved_sv_cheats : "0" );
+	saved_sv_cheats[0] = 0;
 }
 
 int IOS_CheatNoclip( void )

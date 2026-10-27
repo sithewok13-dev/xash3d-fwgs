@@ -381,6 +381,7 @@ char **IOS_RunLauncher( const char *docsdir, int *argc )
 	}
 
 	window.hidden = YES;
+	[[NSNotificationCenter defaultCenter] removeObserver:menu];
 
 	// argv[0] is left empty like the old dialog did
 	char **argv = calloc( args.count + 2, sizeof( char * ));

@@ -34,7 +34,7 @@ const char *IOS_GetDocsDir( void )
 	NSString *documentsDirctory = [paths objectAtIndex:0];
 	[[NSFileManager defaultManager] createDirectoryAtPath:documentsDirctory withIntermediateDirectories:YES attributes:nil error:nil];
 	
-	dir = [documentsDirctory fileSystemRepresentation];
+	dir = strdup( [documentsDirctory fileSystemRepresentation] ); // autoreleased storage
 	NSLog(@"IOS_GetDocsDir: %s", dir);
 	
 	return dir;
@@ -49,7 +49,7 @@ const char *IOS_GetExecDir( void )
 	
 	NSString *executableDirctory = [[NSBundle mainBundle] bundlePath];
 	
-	dir = [executableDirctory fileSystemRepresentation];
+	dir = strdup( [executableDirctory fileSystemRepresentation] ); // autoreleased storage
 	NSLog(@"IOS_GetExecDir: %s", dir);
 	
 	return dir;
@@ -80,7 +80,6 @@ char *IOS_GetUDID( void )
 	static char udid[256];
 	NSString *id = [[[UIDevice currentDevice]identifierForVendor] UUIDString];
 	strncpy( udid, [id UTF8String], 255 );
-	[id release];
 	return udid;
 }
 

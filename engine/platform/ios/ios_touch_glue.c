@@ -39,7 +39,8 @@ static void IOS_TouchRunAction( int action )
 	case IOSTOUCH_ACT_NEXTWEAPON:
 		// the HUD's weapon list takes +attack as "pick this one" without firing
 		Cbuf_AddText( "invnext\n" );
-		ios_touch_select_frames = 3;
+		// (dead, +attack would restart: no pick to confirm then)
+		ios_touch_select_frames = cl.local.health > 0 ? 3 : 0;
 		break;
 	case IOSTOUCH_ACT_FLASHLIGHT:
 		Cbuf_AddText( "impulse 100\n" );
@@ -94,6 +95,14 @@ void IOS_TouchFrame( void )
 	}
 
 	ios_touch_held = held;
+
+	// the engine takes the look only while playing: thrown away while
+	// paused, so the view doesn't jump when the game goes on
+	if( cl.paused || !ingame )
+	{
+		float yaw, pitch;
+		IOSTouch_TakeLook( &yaw, &pitch );
+	}
 
 	while(( action = IOSTouch_PopAction( )) != IOSTOUCH_ACT_NONE )
 		IOS_TouchRunAction( action );

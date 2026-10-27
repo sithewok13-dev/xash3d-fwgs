@@ -893,6 +893,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 - (void)closeTray
 {
 	tray_open = gyro_row_open = cam_row_open = 0;
+	level_counting = 0;
 	[self updateShown];
 }
 
@@ -1154,10 +1155,10 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 {
 	IOS_PhotoCameraEnd();
 	look_yaw = look_pitch = 0;
+	if( burst_on || seq != SEQ_NONE )
+		IOSPhotos_SetBatch( 0 );
 	freezing = 0;
 	seq = SEQ_NONE;
-	if( burst_on )
-		IOSPhotos_SetBatch( 0 );
 	burst_on = 0;
 	[self updateShown];
 	[self updateLabels];
@@ -1426,7 +1427,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 				[self takePhoto:0];
 			break;
 		case KIND_LEVEL:
-			if( level_counting && !cancelled && !s->off )
+			if( level_counting && !cancelled && !s->off && btn_shown[b] )
 			{
 				IOS_GoToLevel( level_index );
 				[self closeTray];

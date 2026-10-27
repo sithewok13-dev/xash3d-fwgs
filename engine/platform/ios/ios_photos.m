@@ -88,6 +88,10 @@ void IOSPhotos_AskAccess( void )
 		if( [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly] == PHAuthorizationStatusNotDetermined )
 			[PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^( PHAuthorizationStatus status ) {}];
 	}
+	else if( [PHPhotoLibrary authorizationStatus] == PHAuthorizationStatusNotDetermined )
+	{
+		[PHPhotoLibrary requestAuthorization:^( PHAuthorizationStatus status ) {}];
+	}
 }
 
 static NSString *IOSPhotos_BaseName( NSDate *when )
@@ -240,6 +244,10 @@ void IOSPhotos_SaveFile( const char *path, int kind, int burst )
 				{
 					PHAuthorizationStatus st = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
 					allowed = st == PHAuthorizationStatusAuthorized || st == PHAuthorizationStatusLimited;
+				}
+				else
+				{
+					allowed = [PHPhotoLibrary authorizationStatus] == PHAuthorizationStatusAuthorized;
 				}
 
 				if( !allowed )

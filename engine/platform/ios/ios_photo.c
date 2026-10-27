@@ -41,6 +41,7 @@ GNU General Public License for more details.
 #define FREEZE_MAX_PITCH 80.0f
 #define PHOTO_FOV_MIN    15.0f
 #define PHOTO_FOV_MAX    110.0f
+#define FREEZE_MAX_PAN   256.0f
 
 typedef enum
 {
@@ -53,7 +54,7 @@ typedef enum
 typedef struct
 {
 	int index;
-	float yaw;
+	float yaw, cur_yaw, prev_yaw; // ent->angles, curstate.angles, latched.prevangles
 } posed_t;
 
 static struct
@@ -153,6 +154,8 @@ static void IOS_PhotoFindPosed( void )
 
 		photo.posed[photo.num_posed].index = i;
 		photo.posed[photo.num_posed].yaw = ent->angles[YAW];
+		photo.posed[photo.num_posed].cur_yaw = ent->curstate.angles[YAW];
+		photo.posed[photo.num_posed].prev_yaw = ent->latched.prevangles[YAW];
 		photo.num_posed++;
 	}
 }
@@ -171,8 +174,11 @@ static void IOS_PhotoPose( const vec3_t camera )
 
 		VectorSubtract( camera, ent->origin, dir );
 		VectorAngles( dir, angles );
+		// the renderer blends monsters from latched.prevangles to curstate.angles,
+		// stuck part way while paused: both, so they face the camera fully
 		ent->angles[YAW] = angles[YAW];
 		ent->curstate.angles[YAW] = angles[YAW];
+		ent->latched.prevangles[YAW] = angles[YAW];
 	}
 }
 
@@ -187,7 +193,8 @@ static void IOS_PhotoUnpose( void )
 		if( ent )
 		{
 			ent->angles[YAW] = photo.posed[i].yaw;
-			ent->curstate.angles[YAW] = photo.posed[i].yaw;
+			ent->curstate.angles[YAW] = photo.posed[i].cur_yaw;
+			ent->latched.prevangles[YAW] = photo.posed[i].prev_yaw;
 		}
 	}
 
@@ -304,12 +311,19 @@ void IOS_PhotoFreezeMove( float dx, float dy, float panx, float pany, float zoom
 	photo.yaw -= dx * FREEZE_ORBIT_DEG;
 	photo.pitch = bound( -FREEZE_MAX_PITCH, photo.pitch + dy * FREEZE_ORBIT_DEG, FREEZE_MAX_PITCH );
 
-	// pan in the camera's plane, as far as the view is wide at the target
-	k = photo.dist * 2.0f * tan( DEG2RAD( photo.fov * 0.5f ));
+	// pan in the camera's plane, as far as the view is tall at the target
+	// (the moves are fractions of the screen's height)
+	k = tan( DEG2RAD( photo.fov * 0.5f ));
+	if( clgame.viewport[2] > 0 )
+		k *= (float)clgame.viewport[3] / clgame.viewport[2];
+	k *= photo.dist * 2.0f;
 	VectorSet( angles, -photo.pitch, photo.yaw + 180.0f, 0.0f );
 	AngleVectors( angles, forward, right, up );
 	VectorMA( photo.pan, -panx * k, right, photo.pan );
 	VectorMA( photo.pan, pany * k, up, photo.pan );
+
+	if( VectorLength( photo.pan ) > FREEZE_MAX_PAN )
+		VectorScale( photo.pan, FREEZE_MAX_PAN / VectorLength( photo.pan ), photo.pan );
 
 	if( zoom > 0.0f )
 		photo.fov = bound( PHOTO_FOV_MIN, photo.fov / zoom, PHOTO_FOV_MAX );
@@ -375,8 +389,15 @@ void IOS_PhotoCalcRefdef( ref_params_t *rp )
 		return;
 	}
 
+	// the target moved by the pan, stopped short of walls
 	IOS_PhotoEyes( photo.target );
-	VectorAdd( photo.target, photo.pan, photo.target );
+	if( VectorLength( photo.pan ) > 0.1f )
+	{
+		vec3_t pandir;
+		float len = VectorNormalizeLength2( photo.pan, pandir );
+		clear = IOS_PhotoClear( photo.target, pandir, len );
+		VectorMA( photo.target, clear, pandir, photo.target );
+	}
 
 	// from the target out to the camera, stopped short of walls
 	VectorSet( angles, photo.pitch, photo.yaw, 0.0f );
