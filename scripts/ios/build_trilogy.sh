@@ -104,8 +104,16 @@ build_cs16() {
 		-DCMAKE_BUILD_TYPE=Release \
 		-DBUILD_MAINUI=OFF \
 		-DCMAKE_INSTALL_PREFIX="$staged" || return 1
-	cmake --build "$cssrc/build" -j"$(sysctl -n hw.ncpu)" || return 1
-	cmake --install "$cssrc/build" || return 1
+	# just the client and the server (its bots included): not YaPB, the
+	# separate bot add-on, nor the install step that would want it
+	if ! cmake --build "$cssrc/build" --target client regamedll -j"$(sysctl -n hw.ncpu)" > "$cssrc/build.log" 2>&1; then
+		echo "cs16-client errors:"
+		grep -E "error|Error" "$cssrc/build.log" | grep -v "warning" | head -40
+		return 1
+	fi
+	mkdir -p "$staged/cstrike/cl_dlls" "$staged/cstrike/dlls"
+	find "$cssrc/build" -name 'client*.dylib' -exec cp {} "$staged/cstrike/cl_dlls/" \;
+	find "$cssrc/build" -name 'cs*.dylib' -path '*regamedll*' -exec cp {} "$staged/cstrike/dlls/" \;
 	find "$staged" -name '*.dylib' | while read -r lib; do
 		base=$(basename "$lib" .dylib)
 		case "$base" in
@@ -116,7 +124,7 @@ build_cs16() {
 	done
 	echo "cs16-client files (only the libraries go in the IPA):"
 	find "$staged" -type f | sort
-	test -n "$(find "$staged" -name 'client_ios_arm64.dylib')"
+	test -n "$(find "$staged" -name 'client_ios_arm64.dylib')" && test -n "$(find "$staged" -name 'cs_ios_arm64.dylib')"
 }
 
 if [ -n "$CS16_REPO" ]; then
