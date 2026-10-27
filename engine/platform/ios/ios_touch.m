@@ -124,6 +124,7 @@ GNU General Public License for more details.
 #define KEY_LOOK_SENS @"iosTouchLookSens"
 #define KEY_SHOW_FPS  @"iosTouchShowFps"
 #define KEY_SHOW_TAPS @"iosTouchShowTaps"
+#define KEY_ALWAYS_RUN @"iosTouchAlwaysRun"
 #define KEY_SWAPPED   @"iosTouchSwapped"
 #define KEY_SHOW_CHEAT @"iosTouchShowCheat"
 #define KEY_SHOW_CAMERA @"iosTouchShowCamera"
@@ -153,6 +154,7 @@ typedef enum
 	BTN_FREEZE_X,
 	BTN_TRAY_GYRO,
 	BTN_TRAY_SENS,
+	BTN_TRAY_RUN,
 	BTN_TRAY_FPS,
 	BTN_TRAY_TAPS,
 	BTN_TRAY_CAM,
@@ -214,6 +216,7 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_FREEZE_X]  = { "X",            KIND_TAP,     0,                      22, 0, ROW_FREEZE },
 [BTN_TRAY_GYRO] = { "GYRO",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
+[BTN_TRAY_RUN]  = { "RUN",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_TAPS] = { "TAPS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_CAM]  = { "CAMERA",       KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
@@ -254,7 +257,7 @@ static int gyro_smooth_next;
 static int gyro_mode = GYRO_OFF, gyro_last_mode = GYRO_TOUCH, gyro_sens_i = 1;
 #define LOOK_SENS_DEFAULT 2 // 1x
 static int look_sens_i = LOOK_SENS_DEFAULT;
-static int show_fps, show_taps, swapped, show_cheat, cheat_on;
+static int show_fps, show_taps, always_run, swapped, show_cheat, cheat_on;
 static int level_counting, level_index;
 static int show_camera = 1, camera_kinds = IOSTOUCH_PHOTO_CLEAN, selfie_shots = 3, freeze_on = 1, cam_row_open;
 
@@ -444,6 +447,7 @@ static void LoadSettings( void )
 
 	show_fps = (int)[d boolForKey:KEY_SHOW_FPS];
 	show_taps = (int)[d boolForKey:KEY_SHOW_TAPS];
+	always_run = (int)[d boolForKey:KEY_ALWAYS_RUN];
 	show_cheat = (int)[d boolForKey:KEY_SHOW_CHEAT];
 
 	if( [d objectForKey:KEY_SHOW_CAMERA] )
@@ -728,6 +732,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	btn_lit[BTN_TRAY_GYRO] = gyro_mode != GYRO_OFF;
 	btn_lit[BTN_TRAY_FPS] = show_fps;
 	btn_lit[BTN_TRAY_TAPS] = show_taps;
+	btn_lit[BTN_TRAY_RUN] = always_run;
 	btn_lit[BTN_TRAY_CTRL] = swapped;
 	btn_lit[BTN_TRAY_CHEAT] = show_cheat;
 	btn_lit[BTN_TRAY_CAM] = show_camera;
@@ -834,7 +839,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)updateShown
 {
-	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_FPS, BTN_TRAY_TAPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
+	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_RUN, BTN_TRAY_FPS, BTN_TRAY_TAPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
 	static const int camrow[] = { BTN_CAM_CLEAN, BTN_CAM_HUD, BTN_CAM_BTNS, BTN_CAM_SELFIES, BTN_CAM_FREEZE };
 	CGFloat top = [self topRowY];
 	int n = 0;
@@ -1018,7 +1023,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	if( c.y - run_dist < limit )
 		run_dist = c.y - limit;
 
-	if( run_dist < IOSTOUCH_RUN_MIN_DIST )
+	// always running: no marker to run on
+	if( run_dist < IOSTOUCH_RUN_MIN_DIST || always_run )
 		run_dist = 0;
 
 	stick_ring.center = c;
@@ -1083,8 +1089,9 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	stick_knob.center = CGPointMake( stick_center.x + vx * IOSTOUCH_STICK_RADIUS, stick_center.y + vy * IOSTOUCH_STICK_RADIUS );
 
-	// walks, however far it is pushed
-	held_cmds |= BIT_CMD( IOSTOUCH_CMD_SPEED );
+	// walks, however far it is pushed (runs with RUN on)
+	if( !always_run )
+		held_cmds |= BIT_CMD( IOSTOUCH_CMD_SPEED );
 	if( vy < -IOSTOUCH_STICK_DEADZONE ) held_cmds |= BIT_CMD( IOSTOUCH_CMD_FORWARD );
 	if( vy > IOSTOUCH_STICK_DEADZONE ) held_cmds |= BIT_CMD( IOSTOUCH_CMD_BACK );
 	if( vx < -IOSTOUCH_STICK_DEADZONE ) held_cmds |= BIT_CMD( IOSTOUCH_CMD_MOVELEFT );
@@ -1140,6 +1147,11 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		show_fps = !show_fps;
 		[[NSUserDefaults standardUserDefaults] setBool:show_fps forKey:KEY_SHOW_FPS];
 		QueueAction( show_fps ? IOSTOUCH_ACT_SHOWFPS : IOSTOUCH_ACT_HIDEFPS );
+		break;
+	case BTN_TRAY_RUN:
+		always_run = !always_run;
+		[[NSUserDefaults standardUserDefaults] setBool:always_run forKey:KEY_ALWAYS_RUN];
+		[self showToast:always_run ? @"Always run: the stick runs, however far it's pushed" : @"Walk by default: push up to the marker to run"];
 		break;
 	case BTN_TRAY_TAPS:
 		show_taps = !show_taps;
