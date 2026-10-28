@@ -45,6 +45,7 @@ enum
 	IOSTOUCH_ACT_CONSOLE,
 	IOSTOUCH_ACT_SHOWFPS,
 	IOSTOUCH_ACT_HIDEFPS,
+	IOSTOUCH_ACT_GAMES, // quit to the launcher's "Choose a game"
 };
 
 // Once per engine frame. window is the SDL_Window; ingame says whether the
@@ -140,6 +141,11 @@ int IOS_TouchShown( void );
 
 // holds a single player game still (the wheel), ios_photo.c
 void IOS_HoldGame( int on );
+
+// before the engine runs again in the same process (launcher.c)
+void IOS_WeaponsForget( void );
+void IOS_PhotoForget( void );
+void IOS_CheatForget( void );
 
 // engine side (ios_cheats.c), single player only
 void IOS_CheatInit( void );

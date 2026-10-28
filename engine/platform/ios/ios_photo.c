@@ -1093,3 +1093,10 @@ void IOS_PhotoPostRender( void )
 		memmove( photo.pending, photo.pending + 1, --photo.num_pending * sizeof( photo.pending[0] ));
 	}
 }
+
+// before the engine runs again in the same process: no camera, nothing
+// posed, nothing pending
+void IOS_PhotoForget( void )
+{
+	memset( &photo, 0, sizeof( photo ));
+}

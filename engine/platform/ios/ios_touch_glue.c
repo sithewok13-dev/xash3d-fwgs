@@ -61,6 +61,10 @@ static void IOS_TouchRunAction( int action )
 	case IOSTOUCH_ACT_HIDEFPS:
 		Cvar_Set( "cl_showfps", "0" );
 		break;
+	case IOSTOUCH_ACT_GAMES:
+		// the engine shuts down and comes back out to "Choose a game"
+		Cbuf_AddText( "quit\n" );
+		break;
 	}
 }
 
@@ -73,20 +77,21 @@ static void IOS_Taps_f( void )
 	Con_Printf( "Touch marks %s\n", on ? "on: white ring = finger, red cross = the game's tap" : "off" );
 }
 
+static qboolean ios_touch_initialized;
+
 void IOS_TouchFrame( void )
 {
-	static qboolean initialized;
 	qboolean ingame = IOS_TouchInGame( );
 	unsigned int held, changed;
 	int action, i;
 
-	if( !initialized )
+	if( !ios_touch_initialized )
 	{
 		// the overlay replaces the engine's own touch buttons
 		Cvar_Set( "touch_enable", "0" );
 		IOS_CheatInit( );
 		Cmd_AddCommand( "ios_taps", IOS_Taps_f, "touch debugging marks: white ring = finger, red cross = the game's tap" );
-		initialized = true;
+		ios_touch_initialized = true;
 	}
 
 	IOS_CheatFrame( );
@@ -222,4 +227,16 @@ void IOS_TouchGetMove( float *pitch, float *yaw )
 
 	*yaw += dyaw;
 	*pitch += dpitch;
+}
+
+// Before the engine runs again in the same process (back to "Choose a
+// game", see launcher.c): what of ours was tied to the old engine
+void IOS_RelaunchReset( void )
+{
+	ios_touch_initialized = false; // its commands are registered anew
+	ios_touch_held = 0;
+	memset( ios_taps, 0, sizeof( ios_taps ));
+	IOS_WeaponsForget( );
+	IOS_PhotoForget( );
+	IOS_CheatForget( );
 }

@@ -362,3 +362,14 @@ void IOS_CheatInit( void )
 {
 	Cmd_AddCommand( "sithewok", IOS_Sithewok_f, "" );
 }
+
+// before the engine runs again in the same process: the cheat itself stays
+// as the player left it (its button shows it), applied anew in the next game
+void IOS_CheatForget( void )
+{
+	saved_sv_cheats[0] = 0;
+	cheat_servercount = -1;
+	give_on_load = false;
+	chapters_game[0] = 0;
+	num_chapters = 0;
+}

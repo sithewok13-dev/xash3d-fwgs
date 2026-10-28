@@ -162,6 +162,7 @@ typedef enum
 	BTN_TRAY_LEVEL,
 	BTN_TRAY_CTRL,
 	BTN_TRAY_KEYS,
+	BTN_TRAY_GAMES,
 	BTN_GYRO_MODE,
 	BTN_GYRO_SENS,
 	BTN_CAM_CLEAN,
@@ -224,6 +225,7 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_TRAY_LEVEL] = { "LEVEL",       KIND_LEVEL,   0,                      20, 0, ROW_TRAY, IOSTOUCH_LEVEL_HOLD },
 [BTN_TRAY_CTRL] = { "CONTROLS",     KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_KEYS] = { "KEYS",         KIND_TRAY,    IOSTOUCH_ACT_CONSOLE,   20, 0, ROW_TRAY },
+[BTN_TRAY_GAMES] = { "GAMES",       KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_GYRO_MODE] = { "MODE",         KIND_TRAY,    0,                      20, 0, ROW_GYRO },
 [BTN_GYRO_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_GYRO },
 [BTN_CAM_CLEAN] = { "CLEAN",        KIND_TRAY,    IOSTOUCH_PHOTO_CLEAN,   20, 0, ROW_CAM },
@@ -541,6 +543,7 @@ static void SaveGyro( void )
 - (int)gyroThumbDown;
 - (void)showToast:(NSString *)text;
 - (void)setCheat:(int)on;
+- (void)confirmGames;
 - (void)updateShown;
 - (void)updateLabels;
 - (void)flash:(int)burst;
@@ -864,7 +867,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)updateShown
 {
-	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_RUN, BTN_TRAY_FPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS };
+	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_RUN, BTN_TRAY_FPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS, BTN_TRAY_GAMES };
 	static const int camrow[] = { BTN_CAM_CLEAN, BTN_CAM_HUD, BTN_CAM_BTNS, BTN_CAM_SELFIES, BTN_CAM_FREEZE };
 	CGFloat top = [self topRowY];
 	int n = 0;
@@ -933,6 +936,25 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	toast.text = text;
 	toast.hidden = NO;
 	toast_until = CACurrentMediaTime() + IOSTOUCH_TOAST_TIME;
+}
+
+// GAMES: back to "Choose a game", after a word on what's lost
+- (void)confirmGames
+{
+	UIViewController *host = self.window.rootViewController;
+	UIAlertController *alert;
+
+	if( !host || host.presentedViewController )
+		return;
+
+	alert = [UIAlertController alertControllerWithTitle:@"Back to Choose a game?"
+		message:@"Unsaved progress will be lost." preferredStyle:UIAlertControllerStyleAlert];
+	[alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+	[alert addAction:[UIAlertAction actionWithTitle:@"Choose a game" style:UIAlertActionStyleDestructive handler:^( UIAlertAction *a ) {
+		[self releaseAll];
+		QueueAction( IOSTOUCH_ACT_GAMES );
+	}]];
+	[host presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)setCheat:(int)on
@@ -1178,6 +1200,9 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		show_fps = !show_fps;
 		[[NSUserDefaults standardUserDefaults] setBool:show_fps forKey:KEY_SHOW_FPS];
 		QueueAction( show_fps ? IOSTOUCH_ACT_SHOWFPS : IOSTOUCH_ACT_HIDEFPS );
+		break;
+	case BTN_TRAY_GAMES:
+		[self confirmGames];
 		break;
 	case BTN_TRAY_RUN:
 		always_run = !always_run;
