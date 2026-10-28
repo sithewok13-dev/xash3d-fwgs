@@ -134,6 +134,66 @@ static float IOS_PhotoClear( const vec3_t start, const vec3_t dir, float dist )
 	return Q_max( 0.0f, tr.fraction * ( dist + FREEZE_WALL_GAP ) - FREEZE_WALL_GAP );
 }
 
+// Whether a character is in the way of a selfie from camera: the camera
+// inside or against its body, or its body between the camera and the
+// player's face. Bodies are taken as upright cylinders from their models'
+// bounds, where they stand now.
+#define SELFIE_BODY_GAP 16.0f
+static qboolean IOS_PhotoSelfieBlocked( const vec3_t camera, const vec3_t eyes )
+{
+	cl_entity_t *player = CL_GetLocalPlayer( );
+	int i;
+
+	for( i = 1; i < clgame.maxEntities; i++ )
+	{
+		cl_entity_t *ent = CL_GetEntityByIndex( i );
+		float r, bottom, top, dx, dy, t, len2, px, py;
+
+		if( !ent || ent == player || !ent->model || ent->model->type != mod_studio )
+			continue;
+
+		if( ent->curstate.messagenum != cl.parsecount || FBitSet( ent->curstate.effects, EF_NODRAW ))
+			continue;
+
+		r = Q_max( Q_max( fabs( ent->model->mins[0] ), fabs( ent->model->maxs[0] )),
+			Q_max( fabs( ent->model->mins[1] ), fabs( ent->model->maxs[1] )));
+		bottom = ent->origin[2] + ent->model->mins[2];
+		top = ent->origin[2] + ent->model->maxs[2];
+
+		if( r <= 0.0f || top <= bottom )
+			continue;
+
+		// the camera in or against the body
+		dx = camera[0] - ent->origin[0];
+		dy = camera[1] - ent->origin[1];
+		if( dx * dx + dy * dy < ( r + SELFIE_BODY_GAP ) * ( r + SELFIE_BODY_GAP )
+			&& camera[2] > bottom - SELFIE_BODY_GAP && camera[2] < top + SELFIE_BODY_GAP )
+			return true;
+
+		// the body across the line from the camera to the face (flat, then
+		// the line's height there)
+		px = eyes[0] - camera[0];
+		py = eyes[1] - camera[1];
+		len2 = px * px + py * py;
+		if( len2 <= 0.0f )
+			continue;
+
+		t = bound( 0.0f, (( ent->origin[0] - camera[0] ) * px + ( ent->origin[1] - camera[1] ) * py ) / len2, 1.0f );
+		dx = camera[0] + px * t - ent->origin[0];
+		dy = camera[1] + py * t - ent->origin[1];
+
+		if( t > 0.0f && t < 1.0f && dx * dx + dy * dy < r * r )
+		{
+			float z = camera[2] + ( eyes[2] - camera[2] ) * t;
+
+			if( z > bottom && z < top )
+				return true;
+		}
+	}
+
+	return false;
+}
+
 // While paused the engine keeps the last frame's list of entities to draw
 // (CL_EmitEntities), so the pause waits for the end of a frame drawn with
 // the camera up: one that has the player's body in it.
@@ -552,28 +612,50 @@ int IOS_PhotoSelfieBegin( void )
 	IOS_PhotoEyes( eyes );
 	photo.base_yaw = cl.viewangles[YAW];
 
-	for( i = 0; i < SELFIE_DIRS; i++ )
+	// the first direction clear of walls and characters; failing that, the
+	// one with the most room that no character blocks; failing that, the
+	// one with the most room
 	{
-		// ahead first, then alternately either side of it
-		float offset = (( i + 1 ) / 2 ) * ( 360.0f / SELFIE_DIRS ) * (( i & 1 ) ? 1.0f : -1.0f );
-		float yaw = cl.viewangles[YAW] + offset;
-		float clear;
-		vec3_t angles = { 0.0f, yaw, 0.0f };
+		float best_free = -1.0f, free_yaw = photo.base_yaw;
 
-		AngleVectors( angles, dir, NULL, NULL );
-		clear = IOS_PhotoClear( eyes, dir, SELFIE_DIST );
-
-		if( clear >= SELFIE_DIST - 0.5f )
+		for( i = 0; i < SELFIE_DIRS; i++ )
 		{
-			photo.base_yaw = yaw;
-			best = clear;
-			break;
+			// ahead first, then alternately either side of it
+			float offset = (( i + 1 ) / 2 ) * ( 360.0f / SELFIE_DIRS ) * (( i & 1 ) ? 1.0f : -1.0f );
+			float yaw = cl.viewangles[YAW] + offset;
+			float clear;
+			vec3_t angles = { 0.0f, yaw, 0.0f }, camera;
+			qboolean blocked;
+
+			AngleVectors( angles, dir, NULL, NULL );
+			clear = IOS_PhotoClear( eyes, dir, SELFIE_DIST );
+			VectorMA( eyes, Q_max( clear, FREEZE_MIN_DIST ), dir, camera );
+			blocked = IOS_PhotoSelfieBlocked( camera, eyes );
+
+			if( !blocked && clear >= SELFIE_DIST - 0.5f )
+			{
+				best_free = clear;
+				free_yaw = yaw;
+				break;
+			}
+
+			if( !blocked && clear > best_free )
+			{
+				best_free = clear;
+				free_yaw = yaw;
+			}
+
+			if( clear > best )
+			{
+				best = clear;
+				photo.base_yaw = yaw;
+			}
 		}
 
-		if( clear > best )
+		if( best_free >= 0.0f )
 		{
-			best = clear;
-			photo.base_yaw = yaw;
+			best = best_free;
+			photo.base_yaw = free_yaw;
 		}
 	}
 
@@ -590,6 +672,17 @@ void IOS_PhotoSelfieShot( int i, int n )
 		return;
 
 	photo.yaw = photo.base_yaw + ( i - ( n - 1 ) * 0.5f ) * 18.0f;
+
+	// a swing that would put someone in the way stays straight on
+	{
+		vec3_t eyes, dir, camera, angles = { 0.0f, photo.yaw, 0.0f };
+
+		IOS_PhotoEyes( eyes );
+		AngleVectors( angles, dir, NULL, NULL );
+		VectorMA( eyes, photo.dist, dir, camera );
+		if( IOS_PhotoSelfieBlocked( camera, eyes ))
+			photo.yaw = photo.base_yaw;
+	}
 
 	// a new pose for each shot after the first
 	if( i > 0 )
