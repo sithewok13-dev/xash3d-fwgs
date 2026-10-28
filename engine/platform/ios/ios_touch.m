@@ -277,6 +277,7 @@ static int wheel_n, wheel_open, wheel_slide, wheel_pick = -1;
 static CGPoint wheel_center, wheel_ref;
 static CGFloat wheel_r0, wheel_r1;
 static CFTimeInterval level_next, toast_until, jump_tap_end;
+static int levels_open, level_rows, level_now = -1; // LEVEL's list of chapters
 static int gyro_running, gyro_was_ok, gyro_last_side;
 static CFTimeInterval gyro_turned_round, gyro_last_frame;
 static CMMotionManager *motion;
@@ -476,7 +477,20 @@ static void SaveGyro( void )
 
 // ---------------------------------------------------------------- the overlay
 
-@interface IOSTouchOverlay : UIView
+// LEVEL's list of chapters sits on this, which keeps the touches on it
+// (UIKit would hand those the list doesn't take on up to the overlay, which
+// takes them for touches outside it and closes the list)
+@interface IOSLevelPanel : UIView
+@end
+
+@implementation IOSLevelPanel
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
+@end
+
+@interface IOSTouchOverlay : UIView <UITableViewDataSource, UITableViewDelegate>
 {
 @public
 	UIView *btn_views[BTN_COUNT];
@@ -498,6 +512,12 @@ static void SaveGyro( void )
 	CAShapeLayer *wheel_slices[IOSTOUCH_WHEEL_MAX];
 	UIView *wheel_cells[IOSTOUCH_WHEEL_MAX];
 	NSMutableDictionary *icon_cache;
+
+	// LEVEL's list of chapters, made the first time it opens
+	IOSLevelPanel *level_panel;
+	UILabel *level_title;
+	UIButton *level_close;
+	UITableView *level_table;
 
 	// LIGHT: the game's flashlight picture, filled to the battery, the
 	// beam lit while it's on
@@ -526,6 +546,9 @@ static void SaveGyro( void )
 - (void)flash:(int)burst;
 - (void)endCamera;
 - (void)closeWheel:(int)select;
+- (void)openLevels;
+- (void)closeLevels;
+- (void)placeLevelPanel;
 @end
 
 static UIView *MakeCircle( CGFloat radius, CGFloat alpha )
@@ -832,6 +855,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	laid_out_for = self.bounds;
 	laid_out_insets = in;
+	if( levels_open )
+		[self placeLevelPanel];
 	laid_out_swapped = swapped;
 	[self updateShown];
 	[self updateLabels];
@@ -920,6 +945,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	cheat_on = on;
 	IOS_CheatSet( on );
+	if( !on )
+		[self closeLevels];
 	Haptic( 0 );
 	[self showToast:on ? @"Cheat on: god mode, all weapons" : @"Cheat off"];
 	[self updateShown];
@@ -1712,6 +1739,214 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 	IOS_HoldGame( 0 );
 }
 
+// ---------------------------------------------------------------- LEVEL's list
+
+// A tap on the tray's LEVEL opens this over the game, which holds still
+// meanwhile (as for the wheel): the game's chapters in order, numbered, the
+// chapter's title and its first map under it, the one being played ticked.
+// A tap on one goes there (as a hold of LEVEL does); the X, or a touch
+// anywhere off the list, closes it. In the HUD's orange on the wheel's dark
+// glass, its heavy letters.
+
+- (void)makeLevelPanel
+{
+	UIVisualEffectView *glass;
+
+	if( level_panel )
+		return;
+
+	level_panel = [[IOSLevelPanel alloc] initWithFrame:CGRectZero];
+	level_panel.backgroundColor = [UIColor clearColor];
+	level_panel.layer.cornerRadius = 14.0;
+	level_panel.layer.borderWidth = 1.5;
+	level_panel.layer.borderColor = HudOrange( 0.55 ).CGColor;
+	level_panel.clipsToBounds = YES;
+	level_panel.hidden = YES;
+
+	glass = [[[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]] autorelease];
+	glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	glass.userInteractionEnabled = NO;
+	[level_panel addSubview:glass];
+	{
+		UIView *tint = [[[UIView alloc] init] autorelease];
+		tint.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+		tint.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
+		tint.userInteractionEnabled = NO;
+		[level_panel addSubview:tint];
+	}
+
+	level_title = [[UILabel alloc] initWithFrame:CGRectZero];
+	level_title.font = [UIFont systemFontOfSize:17 weight:UIFontWeightHeavy];
+	level_title.textColor = HudOrange( 1.0 );
+	level_title.adjustsFontSizeToFitWidth = YES;
+	level_title.minimumScaleFactor = 0.6;
+	[level_panel addSubview:level_title];
+
+	level_close = [[UIButton buttonWithType:UIButtonTypeSystem] retain];
+	if( @available( iOS 13.0, * ))
+	{
+		UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightBold];
+		UIImage *x = [UIImage systemImageNamed:@"xmark" withConfiguration:cfg];
+
+		if( x )
+			[level_close setImage:x forState:UIControlStateNormal];
+	}
+	if( ![level_close imageForState:UIControlStateNormal] )
+	{
+		[level_close setTitle:@"X" forState:UIControlStateNormal];
+		level_close.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightHeavy];
+	}
+	level_close.tintColor = HudOrange( 1.0 );
+	[level_close addTarget:self action:@selector(closeLevels) forControlEvents:UIControlEventTouchUpInside];
+	[level_panel addSubview:level_close];
+
+	level_table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+	level_table.backgroundColor = [UIColor clearColor];
+	level_table.separatorColor = HudOrange( 0.18 );
+	level_table.indicatorStyle = UIScrollViewIndicatorStyleWhite;
+	level_table.rowHeight = 52.0;
+	level_table.dataSource = self;
+	level_table.delegate = self;
+	[level_panel addSubview:level_table];
+
+	[self addSubview:level_panel];
+}
+
+// in the middle, inside the safe area, as tall as it allows
+- (void)placeLevelPanel
+{
+	CGSize size = self.bounds.size;
+	UIEdgeInsets in = [self insets];
+	CGFloat top = in.top + 8.0;
+	CGFloat bottom = in.bottom + 8.0;
+	CGFloat w = MIN( 440.0, size.width - in.left - in.right - 40.0 );
+	CGFloat h = MAX( 120.0, size.height - top - bottom );
+
+	level_panel.frame = CGRectMake( in.left + ( size.width - in.left - in.right - w ) * 0.5, top, w, h );
+	for( UIView *v in level_panel.subviews )
+	{
+		// the glass and its tint, under all of it
+		if( v != level_title && v != level_close && v != level_table )
+			v.frame = level_panel.bounds;
+	}
+	level_title.frame = CGRectMake( 18, 10, w - 70, 26 );
+	level_close.frame = CGRectMake( w - 46, 4, 42, 38 );
+	level_table.frame = CGRectMake( 0, 46, w, h - 46 );
+}
+
+- (void)openLevels
+{
+	int count = IOS_LevelCount( );
+
+	if( levels_open || count <= 0 || !cheat_on )
+		return;
+
+	[self closeWheel:0];
+	[self letGoExcept:NULL]; // (closes the tray too)
+	[self makeLevelPanel];
+
+	levels_open = 1;
+	level_rows = count;
+	level_now = IOS_LevelCurrent( );
+	level_title.text = [NSString stringWithFormat:@"CHAPTERS  (%d)", count];
+	toast.hidden = YES;
+
+	[self placeLevelPanel];
+	[level_table reloadData];
+	level_panel.hidden = NO;
+	[self bringSubviewToFront:level_panel];
+	[level_table layoutIfNeeded];
+
+	// the chapter being played in view
+	if( level_now >= 0 && level_now < level_rows )
+		[level_table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:level_now inSection:0] atScrollPosition:UITableViewScrollPositionMiddle animated:NO];
+	else [level_table setContentOffset:CGPointZero animated:NO];
+
+	// the game holds still while it's open
+	IOS_HoldGame( 1 );
+	Haptic( 0 );
+}
+
+- (void)closeLevels
+{
+	if( !levels_open )
+		return;
+
+	levels_open = 0;
+	level_rows = 0;
+	level_panel.hidden = YES;
+	IOS_HoldGame( 0 );
+}
+
+static NSString *LevelString( const char *s )
+{
+	NSString *str = s ? [NSString stringWithUTF8String:s] : nil;
+
+	if( !str && s )
+		str = [NSString stringWithCString:s encoding:NSWindowsCP1252StringEncoding];
+
+	return str ? str : @"";
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+	return level_rows;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"chapter"];
+	NSInteger row = indexPath.row;
+	NSMutableAttributedString *text;
+	UIFont *font = [UIFont systemFontOfSize:16 weight:UIFontWeightHeavy];
+
+	if( !cell )
+	{
+		UIView *sel = [[[UIView alloc] init] autorelease];
+
+		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"chapter"] autorelease];
+		cell.backgroundColor = [UIColor clearColor];
+		cell.detailTextLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+		cell.detailTextLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.5];
+		cell.tintColor = HudOrange( 1.0 );
+		sel.backgroundColor = HudOrange( 0.3 );
+		cell.selectedBackgroundView = sel;
+	}
+
+	if( row < 0 || row >= level_rows )
+	{
+		cell.textLabel.text = @"";
+		cell.detailTextLabel.text = @"";
+		cell.accessoryType = UITableViewCellAccessoryNone;
+		return cell;
+	}
+
+	// the number in the HUD's orange, then the title
+	text = [[[NSMutableAttributedString alloc] initWithString:[NSString stringWithFormat:@"%d.  ", (int)row + 1]
+		attributes:@{ NSFontAttributeName: font, NSForegroundColorAttributeName: HudOrange( 1.0 ) }] autorelease];
+	[text appendAttributedString:[[[NSAttributedString alloc] initWithString:LevelString( IOS_LevelTitle( (int)row ))
+		attributes:@{ NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.92] }] autorelease]];
+	cell.textLabel.attributedText = text;
+	cell.detailTextLabel.text = LevelString( IOS_LevelMap( (int)row ));
+	cell.accessoryType = row == level_now ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+	return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+	int row = (int)indexPath.row;
+
+	[tableView deselectRowAtIndexPath:indexPath animated:NO];
+	if( !levels_open || row < 0 || row >= level_rows )
+		return;
+
+	// the game goes on first, then the chapter's map loads (with the suit
+	// and the weapons, as from a hold of LEVEL)
+	Haptic( 1 );
+	[self closeLevels];
+	IOS_GoToLevel( row );
+}
+
 // ---------------------------------------------------------------- LIGHT
 
 static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
@@ -1850,6 +2085,15 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 		}
 		s->start = s->last = p;
 		s->t0 = CACurrentMediaTime();
+
+		// LEVEL's list open: a touch off it closes it, and does nothing else
+		// (touches on it stay on it)
+		if( levels_open )
+		{
+			[self closeLevels];
+			s->role = ROLE_IGNORE;
+			continue;
+		}
 
 		b = [self buttonAt:p];
 
@@ -1997,6 +2241,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 - (void)endTouch:(UITouch *)t cancelled:(int)cancelled
 {
 	slot_t *s = [self slotFor:t];
+	int open_levels = 0;
 
 	if( !s )
 		return;
@@ -2056,8 +2301,8 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 				IOS_GoToLevel( level_index );
 				[self closeTray];
 			}
-			else if( tap )
-				[self showToast:@"Hold LEVEL to count chapters"];
+			else if( tap && btn_shown[b] )
+				open_levels = 1;
 			level_counting = 0;
 			toast_until = 0;
 			break;
@@ -2086,6 +2331,10 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	}
 
 	memset( s, 0, sizeof( *s ));
+
+	// (once this touch is let go: opening lets go of the others)
+	if( open_levels )
+		[self openLevels];
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
@@ -2103,6 +2352,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 - (void)releaseAll
 {
 	[self closeWheel:0];
+	[self closeLevels];
 
 	for( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ )
 	{
@@ -2126,6 +2376,10 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	CFTimeInterval now = CACurrentMediaTime();
 
 	[self cameraFrame];
+
+	// the list closes itself once the cheat or single player is over
+	if( levels_open && ( !cheat_on || IOS_LevelCount( ) <= 0 ))
+		[self closeLevels];
 
 	if( level_counting )
 	{
@@ -2436,7 +2690,7 @@ static void GyroFrame( void )
 	gyro_yaw = gyro_pitch = 0.0;
 	os_unfair_lock_unlock( &gyro_lock );
 
-	ok = gyro_running && ( gyro_mode == GYRO_ALWAYS || [overlay gyroThumbDown] ) && !tray_open && !freezing && seq == SEQ_NONE
+	ok = gyro_running && ( gyro_mode == GYRO_ALWAYS || [overlay gyroThumbDown] ) && !tray_open && !levels_open && !freezing && seq == SEQ_NONE
 		&& now - gyro_turned_round >= IOSTOUCH_GYRO_TURN_HOLD;
 	use = ok && gyro_was_ok && now - gyro_last_frame <= IOSTOUCH_GYRO_MAX_FRAME;
 	gyro_was_ok = ok;

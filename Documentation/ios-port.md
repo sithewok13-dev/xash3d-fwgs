@@ -33,8 +33,12 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   (NORMAL or SWAP sides) and KEYS (console).
 - **Cheat:** the tray's CHEAT, or type `sithewok` in the console. It gives god mode and
   all weapons. While it's on, hold JUMP still for noclip (double-tap JUMP to land), hold
-  USE still for notarget, and hold LEVEL to count through the chapters, then let go to
-  start one. Single player only.
+  USE still for notarget, and the tray shows LEVEL. Single player only.
+- **LEVEL** (while the cheat is on): tap for the list of the game's chapters, numbered,
+  each with its title and its first map, the one being played ticked. The game holds
+  still while it's open. Tap a chapter to start it (with the suit and all weapons); the
+  X or a tap off the list closes it. Or hold LEVEL to count through the chapters, then
+  let go to start one.
 - **PHOTO:**
   - Tap for a photo.
   - Hold for selfies.

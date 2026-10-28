@@ -152,6 +152,8 @@ void IOS_CheatSetNoclip( int on );
 void IOS_CheatSetNotarget( int on );
 int IOS_LevelCount( void );
 const char *IOS_LevelTitle( int i );
+const char *IOS_LevelMap( int i );
+int IOS_LevelCurrent( void );
 void IOS_GoToLevel( int i );
 
 #endif // IOS_TOUCH_H

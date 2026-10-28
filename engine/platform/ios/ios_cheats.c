@@ -99,6 +99,8 @@ static const ios_game_chapters_t game_chapters[] =
 static const ios_chapter_t *chapters[32];
 static int num_chapters;
 static char chapters_game[MAX_QPATH];
+static char current_map[MAX_QPATH]; // the map current_chapter was found for
+static int current_chapter = -1;
 
 static qboolean cheat_on;
 static char saved_sv_cheats[16];
@@ -125,6 +127,8 @@ static void IOS_FindChapters( void )
 
 	Q_strncpy( chapters_game, GI->gamefolder, sizeof( chapters_game ));
 	num_chapters = 0;
+	current_map[0] = 0;
+	current_chapter = -1;
 
 	for( i = 0; i < ARRAYSIZE( game_chapters ); i++ )
 	{
@@ -160,6 +164,85 @@ const char *IOS_LevelTitle( int i )
 {
 	IOS_FindChapters( );
 	return i >= 0 && i < num_chapters ? chapters[i]->title : "";
+}
+
+const char *IOS_LevelMap( int i )
+{
+	IOS_FindChapters( );
+	return i >= 0 && i < num_chapters ? chapters[i]->map : "";
+}
+
+static int IOS_CommonPrefix( const char *a, const char *b )
+{
+	int n = 0;
+
+	while( a[n] && b[n] && Q_tolower( a[n] ) == Q_tolower( b[n] ))
+		n++;
+
+	return n;
+}
+
+// The chapter being played, followed from map to map (once a frame), -1
+// while it isn't known. Its first map is the one played, or the map is one of
+// its later ones (c1a0 Anomalous Materials goes on through c1a0a..c1a0e):
+// the chapter whose first map comes before it and shares most of its name
+// with it (more than all the game's chapters share). A map that matches none
+// (Blue Shift's ba_maint) keeps the chapter the player came from.
+static void IOS_LevelTrack( void )
+{
+	const char *map = sv.name;
+	int i, best = -1, best_n = 0, shared;
+
+	if( sv.state != ss_active || sv.background || svs.maxclients != 1 || !map[0] )
+		return;
+
+	IOS_FindChapters( );
+
+	if( num_chapters <= 0 || !Q_stricmp( map, current_map ))
+		return;
+
+	Q_strncpy( current_map, map, sizeof( current_map ));
+
+	shared = Q_strlen( chapters[0]->map );
+	for( i = 1; i < num_chapters; i++ )
+	{
+		int n = IOS_CommonPrefix( chapters[0]->map, chapters[i]->map );
+		shared = Q_min( shared, n );
+	}
+
+	for( i = 0; i < num_chapters; i++ )
+	{
+		const char *c = chapters[i]->map;
+		int n;
+
+		if( !Q_stricmp( c, map ))
+		{
+			best = i;
+			break;
+		}
+
+		if( Q_stricmp( c, map ) > 0 )
+			continue;
+
+		n = IOS_CommonPrefix( c, map );
+		if( n <= shared || n < 2 )
+			continue;
+
+		if( best < 0 || n > best_n || ( n == best_n && Q_stricmp( c, chapters[best]->map ) > 0 ))
+		{
+			best = i;
+			best_n = n;
+		}
+	}
+
+	if( best >= 0 )
+		current_chapter = best;
+}
+
+int IOS_LevelCurrent( void )
+{
+	IOS_LevelTrack( );
+	return IOS_CheatAllowed( ) && current_chapter < num_chapters ? current_chapter : -1;
 }
 
 static void IOS_ApplyCheat( edict_t *ent, qboolean give )
@@ -251,6 +334,8 @@ void IOS_GoToLevel( int i )
 void IOS_CheatFrame( void )
 {
 	edict_t *ent;
+
+	IOS_LevelTrack( );
 
 	if( !cheat_on || cl.servercount == cheat_servercount )
 		return;
