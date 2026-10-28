@@ -102,7 +102,32 @@ static struct
 	// on one frame (-1: as they stand)
 	int pose_seq;
 	int pose_frame;
+	qboolean selfie_arm; // the pose holds the camera: the weapon hidden
+	qboolean weapon_hidden;
+	int saved_weaponmodel;
 } photo;
+
+// The player's weapon back in hand. Updates from the server are deltas
+// from the last frame, so a weapon hidden there would stay hidden: always
+// put back when a pose without it comes, and when the camera ends.
+static void IOS_PhotoShowWeapon( void )
+{
+	cl_entity_t *player = CL_GetLocalPlayer( );
+
+	if( !photo.weapon_hidden )
+		return;
+
+	photo.weapon_hidden = false;
+	if( player )
+		player->curstate.weaponmodel = photo.saved_weaponmodel;
+	if( cl.frames[cl.parsecountmod].valid )
+		cl.frames[cl.parsecountmod].playerstate[cl.playernum].weaponmodel = photo.saved_weaponmodel;
+}
+
+// "Holding the camera": the one-handed aims stretch an arm straight at the
+// lens, and with the weapon hidden it's the arm holding the camera out
+static const char *selfie_arm_poses[] = { "ref_aim_onehanded", "ref_aim_python" };
+#define SELFIE_ARM_CHANCE 40 // percent of selfie shots
 
 static void IOS_PhotoFlashOff( void );
 
@@ -472,11 +497,28 @@ static void IOS_PhotoPickPose( void )
 	int tries, numframes = 1;
 
 	photo.pose_seq = -1;
+	photo.selfie_arm = false;
+	IOS_PhotoShowWeapon( );
 	if( !player )
 		return;
 
 	if( photo.mode == CAM_SELFIE )
 		IOS_PhotoPickNpcPoses( player );
+
+	// sometimes holding the camera out
+	if( photo.mode == CAM_SELFIE && COM_RandomLong( 1, 100 ) <= SELFIE_ARM_CHANCE )
+	{
+		int seq = IOS_PhotoFindSequence( player->model, selfie_arm_poses[COM_RandomLong( 0, ARRAYSIZE( selfie_arm_poses ) - 1 )], &numframes );
+
+		if( seq >= 0 )
+		{
+			photo.pose_seq = seq;
+			photo.pose_frame = COM_RandomLong( 0, 255 );
+			photo.selfie_arm = true;
+			Con_Reportf( "iOS photo: pose %s holding the camera\n", IOS_PhotoSequenceName( player->model, seq ));
+			return;
+		}
+	}
 
 	for( tries = 0; tries < 24; tries++ )
 	{
@@ -562,9 +604,23 @@ static void IOS_PhotoApplyPose( const vec3_t camera )
 	player->latched.prevframe = photo.pose_frame;
 	player->latched.sequencetime = 0.0f; // no blending from the last move
 
+	// holding the camera: no weapon in the hand (the server's next update
+	// after the camera puts it back)
+	if( photo.selfie_arm )
+	{
+		if( !photo.weapon_hidden )
+		{
+			photo.saved_weaponmodel = player->curstate.weaponmodel;
+			photo.weapon_hidden = true;
+		}
+		player->curstate.weaponmodel = 0;
+	}
+
 	if( cl.frames[cl.parsecountmod].valid )
 	{
 		entity_state_t *ps = &cl.frames[cl.parsecountmod].playerstate[cl.playernum];
+		if( photo.selfie_arm )
+			ps->weaponmodel = 0;
 		ps->sequence = photo.pose_seq;
 		ps->frame = photo.pose_frame;
 		ps->framerate = 0.0f;
@@ -592,6 +648,7 @@ void IOS_PhotoCameraEnd( void )
 		return;
 
 	IOS_PhotoUnpose( );
+	IOS_PhotoShowWeapon( );
 	IOS_PhotoFlashOff( );
 	IOS_PhotoUnpause( );
 	photo.mode = CAM_NONE;
