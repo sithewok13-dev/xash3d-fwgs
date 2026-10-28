@@ -333,6 +333,16 @@ and the home bar (part of the insets), and below the touch controls' top
 row of buttons (the top 15% of the screen)
 =================
 */
+// a draw over the whole screen, from sprites the HUD tiles over all of its
+// screen (Opposing Force's night vision, sprites/of_nv*.spr): the whole real
+// screen, not the HUD's part of it (set around one SPR_AdjustSize call)
+static qboolean cl_ios_screen_overlay;
+
+static qboolean CL_IOSScreenOverlaySprite( const model_t *sprite )
+{
+	return sprite && !Q_strnicmp( sprite->name, "sprites/of_nv", 13 );
+}
+
 static void CL_IOSHudRect( float *x, float *y, float *w, float *h )
 {
 	float left = refState.width * host.window_insets[0] * 0.5f;
@@ -354,8 +364,9 @@ void SPR_AdjustSize( float *x, float *y, float *w, float *h )
 		float hx, hy, hw, hh;
 
 		// something over the HUD's whole screen (a fade, a title's
-		// backdrop) covers the whole real screen, not just the HUD's part
-		if( *x <= 0.0f && *y <= 0.0f && *x + *w >= clgame.scrInfo.iWidth && *y + *h >= clgame.scrInfo.iHeight )
+		// backdrop, night vision's tiles) covers the whole real screen,
+		// not just the HUD's part
+		if( cl_ios_screen_overlay || ( *x <= 0.0f && *y <= 0.0f && *x + *w >= clgame.scrInfo.iWidth && *y + *h >= clgame.scrInfo.iHeight ))
 		{
 			float sx = refState.width / (float)clgame.scrInfo.iWidth;
 			float sy = refState.height / (float)clgame.scrInfo.iHeight;
@@ -472,7 +483,13 @@ static void SPR_DrawGeneric( int frame, float x, float y, float width, float hei
 		return;
 
 	// scale for screen sizes
+#if XASH_IOS
+	cl_ios_screen_overlay = CL_IOSScreenOverlaySprite( clgame.ds.pSprite );
+#endif
 	SPR_AdjustSize( &x, &y, &width, &height );
+#if XASH_IOS
+	cl_ios_screen_overlay = false;
+#endif
 	ref.dllFuncs.Color4ub( clgame.ds.spriteColor[0], clgame.ds.spriteColor[1], clgame.ds.spriteColor[2], clgame.ds.spriteColor[3] );
 	ref.dllFuncs.R_DrawStretchPic( x, y, width, height, s1, t1, s2, t2, texnum );
 }
