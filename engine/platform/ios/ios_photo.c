@@ -82,6 +82,7 @@ static struct
 	vec3_t pan;
 	float yaw, pitch, dist, fov;
 	float base_yaw;    // selfie: the direction found clear
+	float swing;       // selfie: degrees between a burst's shots
 
 	// fov: the client's, put back after each frame
 	float saved_fov;
@@ -450,7 +451,12 @@ static void IOS_PhotoPickNpcPoses( cl_entity_t *player )
 		cl_entity_t *ent = CL_GetEntityByIndex( photo.posed[i].index );
 
 		photo.posed[i].seq = -1;
-		if( !ent || !player || VectorDistance( ent->origin, player->origin ) > NPC_POSE_RADIUS )
+		if( !ent || !player || !ent->model )
+			continue;
+
+		// by the body's edge, so a big one counts from where it reaches
+		if( VectorDistance( ent->origin, player->origin ) - Q_max( ent->model->maxs[0] - ent->model->mins[0],
+			ent->model->maxs[1] - ent->model->mins[1] ) * 0.5f > NPC_POSE_RADIUS )
 			continue;
 
 		photo.posed[i].seq = IOS_PhotoRandomSequence( ent->model );
@@ -596,6 +602,84 @@ int IOS_PhotoCameraActive( void )
 	return photo.mode != CAM_NONE;
 }
 
+// A selfie with a big character (taller than a person: an alien grunt, the
+// gonarch) nearby frames it behind the player: the camera on the far side,
+// further back the bigger it is, low and looking up so it fits.
+#define STAR_MIN_HEIGHT  96.0f
+#define STAR_RANGE       900.0f
+static cl_entity_t *IOS_PhotoFindStar( const vec3_t eyes )
+{
+	cl_entity_t *player = CL_GetLocalPlayer( ), *best = NULL;
+	float best_size = 0.0f;
+	int i;
+
+	for( i = 1; i < clgame.maxEntities; i++ )
+	{
+		cl_entity_t *ent = CL_GetEntityByIndex( i );
+		float height, r, size;
+
+		if( !ent || ent == player || ent->player || !ent->model || ent->model->type != mod_studio )
+			continue;
+
+		if( ent->curstate.messagenum != cl.parsecount || ent->curstate.movetype != MOVETYPE_STEP || FBitSet( ent->curstate.effects, EF_NODRAW ))
+			continue;
+
+		height = ent->model->maxs[2] - ent->model->mins[2];
+		r = Q_max( ent->model->maxs[0] - ent->model->mins[0], ent->model->maxs[1] - ent->model->mins[1] ) * 0.5f;
+		if( height < STAR_MIN_HEIGHT || VectorDistance( ent->origin, eyes ) - r > STAR_RANGE )
+			continue;
+
+		size = height * r;
+		if( size > best_size )
+		{
+			best_size = size;
+			best = ent;
+		}
+	}
+
+	return best;
+}
+
+static qboolean IOS_PhotoStarSelfie( const vec3_t eyes )
+{
+	cl_entity_t *star = IOS_PhotoFindStar( eyes );
+	vec3_t dir, angles, camera;
+	float height, want, clear;
+
+	if( !star )
+		return false;
+
+	// from the star through the player, out to the camera
+	VectorSubtract( eyes, star->origin, dir );
+	dir[2] = 0.0f;
+	if( VectorNormalizeLength( dir ) < 1.0f )
+		return false;
+
+	height = star->model->maxs[2] - star->model->mins[2];
+	want = bound( 96.0f, 48.0f + height * 0.6f, 280.0f );
+
+	VectorAngles( dir, angles );
+	angles[PITCH] = 18.0f; // below the player's eyes, looking up
+	AngleVectors( angles, dir, NULL, NULL );
+	clear = IOS_PhotoClear( eyes, dir, want );
+
+	// too little room this side: an ordinary selfie
+	if( clear < 72.0f )
+		return false;
+
+	VectorMA( eyes, clear, dir, camera );
+	if( IOS_PhotoSelfieBlocked( camera, eyes ))
+		return false;
+
+	photo.base_yaw = photo.yaw = angles[YAW];
+	photo.pitch = angles[PITCH];
+	photo.dist = clear;
+	photo.swing = 6.0f;
+	photo.fov = 90.0f;
+	Con_Reportf( "iOS photo: selfie with %s, %.0f back\n", star->model->name, clear );
+	return true;
+}
+
 // a selfie: the camera at arm's length in front of the player, in the
 // clearest of SELFIE_DIRS directions starting from straight ahead
 int IOS_PhotoSelfieBegin( void )
@@ -611,6 +695,10 @@ int IOS_PhotoSelfieBegin( void )
 	IOS_PhotoPickPose( );
 	IOS_PhotoEyes( eyes );
 	photo.base_yaw = cl.viewangles[YAW];
+	photo.swing = 18.0f;
+
+	if( IOS_PhotoStarSelfie( eyes ))
+		return 1;
 
 	// the first direction clear of walls and characters; failing that, the
 	// one with the most room that no character blocks; failing that, the
@@ -671,7 +759,7 @@ void IOS_PhotoSelfieShot( int i, int n )
 	if( photo.mode != CAM_SELFIE || n <= 1 )
 		return;
 
-	photo.yaw = photo.base_yaw + ( i - ( n - 1 ) * 0.5f ) * 18.0f;
+	photo.yaw = photo.base_yaw + ( i - ( n - 1 ) * 0.5f ) * photo.swing;
 
 	// a swing that would put someone in the way stays straight on
 	{
