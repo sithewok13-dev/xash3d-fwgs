@@ -57,6 +57,8 @@ int IOS_GetArgs( char ***argv );
 const char *IOS_GetDocsDir( void );
 const char *IOS_GetExecDir( void );
 void IOS_LaunchDialog( void );
+void IOS_RelaunchReset( void ); // our state, before the engine runs again
+void Host_ResetForRelaunch( void );
 void IOS_GetWindowInsets( void *window, float insets[4] );
 void IOS_TouchFrame( void );
 void IOS_TouchGetMove( float *pitch, float *yaw );

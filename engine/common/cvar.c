@@ -525,6 +525,14 @@ void Cvar_RegisterVariable( convar_t *var )
 		return;
 	}
 
+#if XASH_IOS
+	// registered again after an engine restart in the same process (iOS
+	// goes back to its launcher, see launcher.c): the static default, not
+	// the last value from the old pool
+	if( FBitSet( var->flags, FCVAR_EXTENDED ) && var->def_string )
+		var->string = var->def_string;
+#endif
+
 	// NOTE: all the 'long' engine cvars have an special setntinel on static declaration
 	// (all the engine cvars should be declared through CVAR_DEFINE macros or they shouldn't working properly anyway)
 	// so we can determine long version 'convar_t' and short version 'cvar_t' more reliable than by FCVAR_EXTDLL flag
@@ -1287,7 +1295,14 @@ void Cvar_Init( void )
 
 void Cvar_Shutdown( void )
 {
+#if XASH_IOS
+	// iOS restarts the engine in the same process (see launcher.c): static
+	// variables of game libraries that stay loaded still point at strings
+	// in this pool, so it's left alone (Memory_Init forgets it, it's small)
+	cvar_pool = 0;
+#else
 	Mem_FreePool( &cvar_pool );
+#endif
 }
 
 /*

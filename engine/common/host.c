@@ -1348,6 +1348,21 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
 	return 0;
 }
 
+#if XASH_IOS
+/*
+=================
+Host_ResetForRelaunch
+
+iOS: before Host_Main runs again in the same process (the launcher's
+"Choose a game" after Quit): the host's state as at process start
+=================
+*/
+void Host_ResetForRelaunch( void )
+{
+	memset( &host, 0, sizeof( host ));
+}
+#endif
+
 void EXPORT Host_Shutdown( void );
 void EXPORT Host_Shutdown( void )
 {

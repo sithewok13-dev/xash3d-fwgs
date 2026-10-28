@@ -558,3 +558,18 @@ int IOS_HudHidesSprite( const char *sprite, int left, int top, int right, int bo
 
 	return 0;
 }
+
+// before the engine runs again in the same process (back to "Choose a
+// game"): the icons were in the engine's memory, gone with it, so they're
+// dropped, not freed
+void IOS_WeaponsForget( void )
+{
+	memset( weapons, 0, sizeof( weapons ));
+	memset( ammo, 0, sizeof( ammo ));
+	memset( flash_parts, 0, sizeof( flash_parts ));
+	weapons_game[0] = 0;
+	flash_game[0] = 0;
+	flash_on = false;
+	flash_battery = 100;
+	current_id = -1;
+}

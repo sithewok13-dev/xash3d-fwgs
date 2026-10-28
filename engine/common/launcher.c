@@ -39,8 +39,18 @@ int main( int argc, char **argv )
 	// inject -dev -console into args if required
 	szArgc = PSVita_GetArgv( argc, argv, &szArgv );
 #elif XASH_IOS
-	IOS_LaunchDialog();
-	szArgc = IOS_GetArgs( &szArgv );
+	// iOS has no way to start the app again, so Quit (a game's own, or
+	// GAMES in the touch controls' tray) comes back out of Host_Main to
+	// "Choose a game", and the engine runs again in the same process
+	for( ;; )
+	{
+		IOS_LaunchDialog();
+		szArgc = IOS_GetArgs( &szArgv );
+		Host_Main( szArgc, szArgv, XASH_GAMEDIR, 0, Sys_ChangeGame );
+
+		IOS_RelaunchReset();
+		Host_ResetForRelaunch();
+	}
 #else
 	szArgc = argc;
 	szArgv = argv;
