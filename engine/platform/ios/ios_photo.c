@@ -127,7 +127,23 @@ static void IOS_PhotoShowWeapon( void )
 // "Holding the camera": the one-handed aims stretch an arm straight at the
 // lens, and with the weapon hidden it's the arm holding the camera out
 static const char *selfie_arm_poses[] = { "ref_aim_onehanded", "ref_aim_python" };
-#define SELFIE_ARM_CHANCE 40 // percent of selfie shots
+#define SELFIE_ARM_CHANCE 35 // percent of selfie shots
+
+// The weird ones: moves the game uses for other things, held on a frame
+// that makes a pose of them (a death's first quarter, before the fall)
+static const struct { const char *name; int frame_min, frame_max; } selfie_weird_poses[] =
+{
+	{ "ref_aim_dualpistols", 0,  255 }, // akimbo, which Gordon never is
+	{ "swim",                64, 192 }, // flying like a superhero
+	{ "longjump",            64, 160 }, // mid leap
+	{ "ref_shoot_squeak",    64, 192 }, // throwing at the camera
+	{ "ref_shoot_trip",      64, 192 }, // planting a tripmine
+	{ "gutshot",             8,  64  }, // doubled over: ow
+	{ "headshot",            8,  64  }, // head snapped back: whoa
+	{ "die_spin",            8,  64  }, // twisting round
+	{ "dummy",               0,  0   }, // the model's bind pose: a T-pose on some
+};
+#define SELFIE_WEIRD_CHANCE 25 // percent of selfie shots
 
 static void IOS_PhotoFlashOff( void );
 
@@ -494,7 +510,7 @@ static void IOS_PhotoPickNpcPoses( cl_entity_t *player )
 static void IOS_PhotoPickPose( void )
 {
 	cl_entity_t *player = CL_GetLocalPlayer( );
-	int tries, numframes = 1;
+	int tries, numframes = 1, roll;
 
 	photo.pose_seq = -1;
 	photo.selfie_arm = false;
@@ -505,8 +521,23 @@ static void IOS_PhotoPickPose( void )
 	if( photo.mode == CAM_SELFIE )
 		IOS_PhotoPickNpcPoses( player );
 
-	// sometimes holding the camera out
-	if( photo.mode == CAM_SELFIE && COM_RandomLong( 1, 100 ) <= SELFIE_ARM_CHANCE )
+	// sometimes holding the camera out, sometimes something weird
+	roll = COM_RandomLong( 1, 100 );
+	if( photo.mode == CAM_SELFIE && roll > SELFIE_ARM_CHANCE && roll <= SELFIE_ARM_CHANCE + SELFIE_WEIRD_CHANCE )
+	{
+		int which = COM_RandomLong( 0, ARRAYSIZE( selfie_weird_poses ) - 1 );
+		int seq = IOS_PhotoFindSequence( player->model, selfie_weird_poses[which].name, &numframes );
+
+		if( seq >= 0 )
+		{
+			photo.pose_seq = seq;
+			photo.pose_frame = COM_RandomLong( selfie_weird_poses[which].frame_min, selfie_weird_poses[which].frame_max );
+			Con_Reportf( "iOS photo: weird pose %s, frame %d\n", IOS_PhotoSequenceName( player->model, seq ), photo.pose_frame );
+			return;
+		}
+	}
+
+	if( photo.mode == CAM_SELFIE && roll <= SELFIE_ARM_CHANCE )
 	{
 		int seq = IOS_PhotoFindSequence( player->model, selfie_arm_poses[COM_RandomLong( 0, ARRAYSIZE( selfie_arm_poses ) - 1 )], &numframes );
 
