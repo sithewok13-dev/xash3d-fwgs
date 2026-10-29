@@ -27,6 +27,11 @@ GNU General Public License for more details.
 #include "library.h"
 #include "input.h"
 #include "crash.h"
+#if XASH_IOS
+#include <execinfo.h>
+#include <dlfcn.h>
+#include <ucontext.h>
+#endif
 
 #if XASH_ANDROID
 static char crashlog_path[MAX_OSPATH];
@@ -35,6 +40,67 @@ static char enginelog_path[MAX_OSPATH];
 
 static qboolean have_libbacktrace = false;
 static char crash_message[8192];
+
+#if XASH_IOS
+/*
+libbacktrace can't read the app's Mach-O files ("no debug info"), so name
+the library, its offset and the nearest exported symbol of each address.
+The return address goes first: on a jump to a NULL pointer (pc 0) it's the
+code that made the call.
+*/
+static int Sys_CrashAddressIOS( char *message, int len, size_t max_len, const char *label, void *addr )
+{
+	Dl_info info;
+
+	if( !addr || !dladdr( addr, &info ) || !info.dli_fname )
+		return len + Q_snprintf( message + len, max_len - len, "%s: %p\n", label, addr );
+
+	const char *lib = Q_strrchr( info.dli_fname, '/' );
+	lib = lib ? lib + 1 : info.dli_fname;
+
+	if( info.dli_sname )
+		return len + Q_snprintf( message + len, max_len - len, "%s: %s+0x%lx (%s+0x%lx)\n", label, lib,
+			(unsigned long)((byte *)addr - (byte *)info.dli_fbase ), info.dli_sname, (unsigned long)((byte *)addr - (byte *)info.dli_saddr ));
+
+	return len + Q_snprintf( message + len, max_len - len, "%s: %s+0x%lx\n", label, lib,
+		(unsigned long)((byte *)addr - (byte *)info.dli_fbase ));
+}
+
+static int Sys_CrashDetailsIOS( int logfd, char *message, int len, size_t max_len, void *context )
+{
+	int start = len;
+	void *frames[32];
+	int count = backtrace( frames, ARRAYSIZE( frames ));
+
+#if XASH_ARM && XASH_64BIT
+	ucontext_t *uc = context;
+
+	if( uc && uc->uc_mcontext )
+	{
+		len = Sys_CrashAddressIOS( message, len, max_len, "caller", (void *)uc->uc_mcontext->__ss.__lr );
+		len = Sys_CrashAddressIOS( message, len, max_len, "pc", (void *)uc->uc_mcontext->__ss.__pc );
+	}
+#endif
+
+	for( int i = 0; i < count && len < (int)max_len - 1; i++ )
+	{
+		char label[16];
+		Q_snprintf( label, sizeof( label ), "%2d", i );
+		len = Sys_CrashAddressIOS( message, len, max_len, label, frames[i] );
+	}
+
+	if( len > (int)max_len - 1 )
+		len = (int)max_len - 1;
+
+	if( logfd >= 0 )
+	{
+		ssize_t unused = write( logfd, message + start, len - start );
+		(void)unused;
+	}
+
+	return len;
+}
+#endif // XASH_IOS
 
 static void Sys_Crash( int signal, siginfo_t *si, void *context )
 {
@@ -60,7 +126,9 @@ static void Sys_Crash( int signal, siginfo_t *si, void *context )
 		unused = write( logfd, crash_message, len );
 	(void)unused;
 
-#if HAVE_LIBBACKTRACE
+#if XASH_IOS
+	len = Sys_CrashDetailsIOS( logfd, crash_message, len, sizeof( crash_message ), context );
+#elif HAVE_LIBBACKTRACE
 	qboolean detailed_message = false;
 	if( have_libbacktrace && !detailed_message )
 	{
