@@ -295,7 +295,7 @@ static float look_yaw, look_pitch;
 static unsigned int held_cmds;
 static int actions[IOSTOUCH_MAX_ACTIONS], actions_head, actions_tail;
 static int tray_open, gyro_row_open;
-static float ctrl_opacity = 1.0f; // OPACITY: the controls' strength, MENU and the tray aside
+static float ctrl_opacity = 1.0f; // OPACITY: the controls' strength, the tray aside
 static int opacity_open;          // its slider is out
 
 static void QueueAction( int action )
@@ -605,13 +605,14 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	return hypot( a.x - b.x, a.y - b.y );
 }
 
-// a button's look idle or pressed: the controls at OPACITY's strength,
-// MENU (the way back to OPACITY) and the tray always at full
+// a button's look idle or pressed: the controls, MENU among them, at
+// OPACITY's strength (at least its lowest, so MENU can always be found), the
+// tray at full
 static CGFloat ButtonAlpha( int i, int on )
 {
 	CGFloat a = on ? 1.0 : IOSTOUCH_IDLE_ALPHA;
 
-	if( buttons[i].row == ROW_MAIN && i != BTN_MENU )
+	if( buttons[i].row == ROW_MAIN )
 		a *= ctrl_opacity;
 	return a;
 }
@@ -663,6 +664,7 @@ static CGFloat ButtonAlpha( int i, int on )
 		l.font = [UIFont boldSystemFontOfSize:8];
 		l.textColor = [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
 		l.hidden = YES;
+		l.alpha = ctrl_opacity;
 		cheat_tags[i] = l;
 		[self addSubview:l];
 	}
@@ -1001,7 +1003,7 @@ static CGFloat ButtonAlpha( int i, int on )
 		top + IOSTOUCH_TRAY_DROP + 30 );
 }
 
-// OPACITY: every control at this strength (MENU and the tray aside)
+// OPACITY: every control at this strength (the tray aside)
 - (void)setOpacity:(float)k
 {
 	ctrl_opacity = MAX( IOSTOUCH_OPACITY_MIN, MIN( 1.0f, k ));
@@ -1011,6 +1013,7 @@ static CGFloat ButtonAlpha( int i, int on )
 		btn_views[i].alpha = ButtonAlpha( i, 0 );
 
 	stick_ring.alpha = stick_knob.alpha = ctrl_opacity;
+	cheat_tags[0].alpha = cheat_tags[1].alpha = ctrl_opacity;
 	run_lit = -1; // redone at its next look
 	run_marker.alpha = IOSTOUCH_IDLE_ALPHA * ctrl_opacity;
 }

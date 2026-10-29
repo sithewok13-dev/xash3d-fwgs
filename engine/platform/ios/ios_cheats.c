@@ -245,6 +245,11 @@ int IOS_LevelCurrent( void )
 	return IOS_CheatAllowed( ) && current_chapter < num_chapters ? current_chapter : -1;
 }
 
+// impulse 101's pickups would fill the right of the screen with every
+// weapon at once: the game's pickup list is off for a moment around it
+static char saved_history_time[16];
+static double history_back_at;
+
 static void IOS_ApplyCheat( edict_t *ent, qboolean give )
 {
 	if( !saved_sv_cheats[0] )
@@ -253,7 +258,18 @@ static void IOS_ApplyCheat( edict_t *ent, qboolean give )
 	SetBits( ent->v.flags, FL_GODMODE );
 
 	if( give )
+	{
+		const char *t = Cvar_VariableString( "hud_drawhistory_time" );
+
+		if( t[0] && !history_back_at )
+		{
+			Q_strncpy( saved_history_time, t, sizeof( saved_history_time ));
+			Cvar_Set( "hud_drawhistory_time", "0" );
+			history_back_at = host.realtime + 2.0;
+		}
+
 		Cbuf_AddText( "impulse 101\n" );
+	}
 }
 
 void IOS_CheatSet( int on )
@@ -337,6 +353,12 @@ void IOS_CheatFrame( void )
 
 	IOS_LevelTrack( );
 
+	if( history_back_at && host.realtime >= history_back_at )
+	{
+		Cvar_Set( "hud_drawhistory_time", saved_history_time );
+		history_back_at = 0;
+	}
+
 	if( !cheat_on || cl.servercount == cheat_servercount )
 		return;
 
@@ -368,6 +390,7 @@ void IOS_CheatInit( void )
 void IOS_CheatForget( void )
 {
 	saved_sv_cheats[0] = 0;
+	history_back_at = 0;
 	cheat_servercount = -1;
 	give_on_load = false;
 	chapters_game[0] = 0;
