@@ -28,6 +28,8 @@ GNU General Public License for more details.
 #include <arpa/inet.h>
 #include "launcher_menu.h"
 
+extern const char *g_buildcommit;
+
 typedef struct launcher_game_s
 {
 	const char *dir;      // game folder
@@ -372,7 +374,17 @@ static BOOL IsAnniversaryData( NSString *root )
 	bottom.alignment = UIStackViewAlignmentCenter;
 	[options setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
-	UIStackView *page = [[UIStackView alloc] initWithArrangedSubviews:@[title, cards, bottom]];
+	// which build this is, to tell builds apart when testing
+	UILabel *build = [[UILabel alloc] init];
+	build.text = [NSString stringWithFormat:@"build %s", g_buildcommit];
+	build.textColor = [UIColor colorWithWhite:0.45 alpha:1.0];
+	build.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightRegular];
+	[build setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+
+	UIStackView *top = [[UIStackView alloc] initWithArrangedSubviews:@[title, build]];
+	top.alignment = UIStackViewAlignmentFirstBaseline;
+
+	UIStackView *page = [[UIStackView alloc] initWithArrangedSubviews:@[top, cards, bottom]];
 	page.axis = UILayoutConstraintAxisVertical;
 	page.spacing = 16;
 	page.translatesAutoresizingMaskIntoConstraints = NO;
