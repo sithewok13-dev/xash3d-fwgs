@@ -662,6 +662,13 @@ static void Con_LoadConsoleFont( int fontNumber, cl_font_t *font )
 	qboolean success = false;
 	float scale = con_fontscale.value;
 
+#if XASH_IOS
+	// a phone's screen has many pixels but is small: its text, including the
+	// menus' descriptions, a quarter bigger (as scripts/ios/patch_mainui.sh
+	// makes the menus' own)
+	scale *= 1.25f;
+#endif
+
 	if( font->valid )
 		return; // already loaded
 
