@@ -19,4 +19,8 @@ GNU General Public License for more details.
 // Returns a malloc'd argv (argv[0] empty) and sets XASH3D_BASEDIR.
 char **IOS_RunLauncher( const char *docsdir, int *argc );
 
+// After a game: the picker again, the pick kept for the next launch (see
+// IOS_RunLauncher), a notification to tap, and the app closes. No return.
+void IOS_RunSwitch( const char *docsdir ) __attribute__(( noreturn ));
+
 #endif // LAUNCHER_MENU_H
