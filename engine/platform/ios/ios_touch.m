@@ -33,6 +33,8 @@ GNU General Public License for more details.
 #include <string.h>
 #include "ios_touch.h"
 
+extern const char *g_buildcommit;
+
 // Look speed: degrees of view turn per point of finger travel (the same turn
 // as the Jedi Knight port at its default mouse settings), times SENS
 #define IOSTOUCH_LOOK_DEG_X 0.64f
@@ -52,6 +54,7 @@ GNU General Public License for more details.
 #define IOSTOUCH_RUN_CONE_OFF 40.0
 // Looks
 #define IOSTOUCH_IDLE_ALPHA 0.65
+#define IOSTOUCH_OPACITY_MIN 0.2 // OPACITY's lowest: the controls never vanish
 #define IOSTOUCH_CLUSTER_GAP 30.0
 #define IOSTOUCH_ARC_RADIUS 115.0
 #define IOSTOUCH_TOUCH_SLOP 6.0
@@ -127,6 +130,7 @@ GNU General Public License for more details.
 #define KEY_ALWAYS_RUN @"iosTouchAlwaysRun"
 #define KEY_SWAPPED   @"iosTouchSwapped"
 #define KEY_SHOW_CHEAT @"iosTouchShowCheat"
+#define KEY_OPACITY @"iosTouchOpacity"
 #define KEY_SHOW_CAMERA @"iosTouchShowCamera"
 #define KEY_CAMERA_KINDS @"iosTouchCameraKinds"
 #define KEY_SELFIES   @"iosTouchSelfieShots"
@@ -155,6 +159,7 @@ typedef enum
 	BTN_TRAY_GYRO,
 	BTN_TRAY_SENS,
 	BTN_TRAY_RUN,
+	BTN_TRAY_OPACITY,
 	BTN_TRAY_FPS,
 	BTN_TRAY_TAPS,
 	BTN_TRAY_CAM,
@@ -218,6 +223,7 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_TRAY_GYRO] = { "GYRO",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_RUN]  = { "RUN",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
+[BTN_TRAY_OPACITY] = { "OPACITY",   KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_TAPS] = { "TAPS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_CAM]  = { "CAMERA",       KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
@@ -289,6 +295,8 @@ static float look_yaw, look_pitch;
 static unsigned int held_cmds;
 static int actions[IOSTOUCH_MAX_ACTIONS], actions_head, actions_tail;
 static int tray_open, gyro_row_open;
+static float ctrl_opacity = 1.0f; // OPACITY: the controls' strength, MENU and the tray aside
+static int opacity_open;          // its slider is out
 
 static void QueueAction( int action )
 {
@@ -452,6 +460,8 @@ static void LoadSettings( void )
 	show_taps = (int)[d boolForKey:KEY_SHOW_TAPS];
 	always_run = (int)[d boolForKey:KEY_ALWAYS_RUN];
 	show_cheat = (int)[d boolForKey:KEY_SHOW_CHEAT];
+	if( [d objectForKey:KEY_OPACITY] )
+		ctrl_opacity = MAX( IOSTOUCH_OPACITY_MIN, MIN( 1.0f, [d floatForKey:KEY_OPACITY] ));
 
 	if( [d objectForKey:KEY_SHOW_CAMERA] )
 		show_camera = (int)[d boolForKey:KEY_SHOW_CAMERA];
@@ -503,6 +513,9 @@ static void SaveGyro( void )
 	int btn_lit[BTN_COUNT];      // a switch that is on
 
 	UIView *stick_ring, *stick_knob, *run_marker;
+	UIView *opacity_panel;       // OPACITY's slider, under the tray
+	UISlider *opacity_slider;
+	UILabel *tray_build;         // the build, under the tray
 	CAShapeLayer *run_chevrons, *run_link;
 	int run_lit;                 // what run_marker shows (-1: not yet set)
 	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
@@ -592,6 +605,17 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	return hypot( a.x - b.x, a.y - b.y );
 }
 
+// a button's look idle or pressed: the controls at OPACITY's strength,
+// MENU (the way back to OPACITY) and the tray always at full
+static CGFloat ButtonAlpha( int i, int on )
+{
+	CGFloat a = on ? 1.0 : IOSTOUCH_IDLE_ALPHA;
+
+	if( buttons[i].row == ROW_MAIN && i != BTN_MENU )
+		a *= ctrl_opacity;
+	return a;
+}
+
 @implementation IOSTouchOverlay
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -625,7 +649,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 			[v.layer addSublayer:btn_rings[i]];
 		}
 
-		v.alpha = IOSTOUCH_IDLE_ALPHA;
+		v.alpha = ButtonAlpha( i, 0 );
 		btn_views[i] = v;
 		btn_labels[i] = l;
 		[self addSubview:v];
@@ -715,7 +739,33 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	[self addSubview:stick_knob];
 	stick_ring.hidden = stick_knob.hidden = run_marker.hidden = YES;
 	run_link.hidden = YES;
+	stick_ring.alpha = stick_knob.alpha = ctrl_opacity;
 	[self setRunLit:0];
+
+	// OPACITY's slider: dark glass round a slider
+	opacity_panel = [[UIView alloc] initWithFrame:CGRectMake( 0, 0, 240, 44 )];
+	opacity_panel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55];
+	opacity_panel.layer.cornerRadius = 22;
+	opacity_panel.layer.borderWidth = 1;
+	opacity_panel.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.3].CGColor;
+	opacity_panel.hidden = YES;
+
+	opacity_slider = [[UISlider alloc] initWithFrame:CGRectMake( 16, 7, 208, 30 )];
+	opacity_slider.minimumValue = IOSTOUCH_OPACITY_MIN;
+	opacity_slider.maximumValue = 1.0;
+	opacity_slider.value = ctrl_opacity;
+	opacity_slider.minimumTrackTintColor = [UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.95];
+	[opacity_slider addTarget:self action:@selector( opacitySlid: ) forControlEvents:UIControlEventValueChanged];
+	[opacity_slider addTarget:self action:@selector( opacityLifted: ) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+	[opacity_panel addSubview:opacity_slider];
+	[self addSubview:opacity_panel];
+
+	tray_build = [[UILabel alloc] init];
+	tray_build.text = [NSString stringWithFormat:@"build %s", g_buildcommit];
+	tray_build.font = [UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightRegular];
+	tray_build.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+	tray_build.hidden = YES;
+	[self addSubview:tray_build];
 
 	return self;
 }
@@ -751,6 +801,8 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	btn_labels[BTN_TRAY_GYRO].text = [NSString stringWithFormat:@"GYRO\n%s", modes[gyro_mode]];
 	btn_labels[BTN_TRAY_SENS].text = [NSString stringWithFormat:@"SENS\n%gx", look_sens[look_sens_i]];
+	btn_labels[BTN_TRAY_OPACITY].text = [NSString stringWithFormat:@"OPACITY\n%d%%", (int)lroundf( ctrl_opacity * 100.0f )];
+	btn_lit[BTN_TRAY_OPACITY] = opacity_open;
 	btn_labels[BTN_TRAY_CTRL].text = swapped ? @"CTRL\nSWAP" : @"CTRL\nNORMAL";
 	btn_labels[BTN_GYRO_MODE].text = [NSString stringWithFormat:@"MODE\n%s", modes[gyro_last_mode]];
 	btn_labels[BTN_GYRO_SENS].text = [NSString stringWithFormat:@"GYRO\n%gx", gyro_sens[gyro_sens_i]];
@@ -867,7 +919,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)updateShown
 {
-	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_RUN, BTN_TRAY_FPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS, BTN_TRAY_GAMES };
+	static const int tray[] = { BTN_TRAY_GYRO, BTN_TRAY_SENS, BTN_TRAY_RUN, BTN_TRAY_OPACITY, BTN_TRAY_FPS, BTN_TRAY_CAM, BTN_TRAY_CHEAT, BTN_TRAY_LEVEL, BTN_TRAY_CTRL, BTN_TRAY_KEYS, BTN_TRAY_GAMES };
 	static const int camrow[] = { BTN_CAM_CLEAN, BTN_CAM_HUD, BTN_CAM_BTNS, BTN_CAM_SELFIES, BTN_CAM_FREEZE };
 	CGFloat top = [self topRowY];
 	int n = 0;
@@ -929,6 +981,50 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 	[self place:BTN_GYRO_MODE at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x, top + 2 * IOSTOUCH_TRAY_DROP )];
 	[self place:BTN_GYRO_SENS at:CGPointMake( btn_pos[BTN_TRAY_GYRO].x + IOSTOUCH_TRAY_STEP, top + 2 * IOSTOUCH_TRAY_DROP )];
+
+	// OPACITY's slider under it, kept on screen
+	opacity_open = opacity_open && tray_open && btn_shown[BTN_TRAY_OPACITY];
+	opacity_panel.hidden = !opacity_open;
+	if( opacity_open )
+	{
+		CGFloat w = opacity_panel.bounds.size.width;
+		CGFloat cx = MIN( MAX( btn_pos[BTN_TRAY_OPACITY].x, [self insets].left + w / 2 + 8 ),
+			self.bounds.size.width - [self insets].right - w / 2 - 8 );
+		opacity_panel.center = CGPointMake( cx, top + 2 * IOSTOUCH_TRAY_DROP );
+		opacity_slider.value = ctrl_opacity;
+	}
+
+	// the build, right under the tray's end (under MENU)
+	tray_build.hidden = !tray_open || seq != SEQ_NONE || freezing;
+	[tray_build sizeToFit];
+	tray_build.center = CGPointMake( btn_pos[BTN_MENU].x - tray_build.bounds.size.width / 2 + 20,
+		top + IOSTOUCH_TRAY_DROP + 30 );
+}
+
+// OPACITY: every control at this strength (MENU and the tray aside)
+- (void)setOpacity:(float)k
+{
+	ctrl_opacity = MAX( IOSTOUCH_OPACITY_MIN, MIN( 1.0f, k ));
+	opacity_slider.value = ctrl_opacity;
+
+	for( int i = 0; i < BTN_COUNT; i++ )
+		btn_views[i].alpha = ButtonAlpha( i, 0 );
+
+	stick_ring.alpha = stick_knob.alpha = ctrl_opacity;
+	run_lit = -1; // redone at its next look
+	run_marker.alpha = IOSTOUCH_IDLE_ALPHA * ctrl_opacity;
+}
+
+- (void)opacitySlid:(UISlider *)slider
+{
+	// whole 5 % steps
+	[self setOpacity:roundf( slider.value * 20.0f ) / 20.0f];
+	[self updateLabels];
+}
+
+- (void)opacityLifted:(UISlider *)slider
+{
+	[[NSUserDefaults standardUserDefaults] setFloat:ctrl_opacity forKey:KEY_OPACITY];
 }
 
 - (void)showToast:(NSString *)text
@@ -1028,7 +1124,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)setPressed:(int)i on:(int)on
 {
-	btn_views[i].alpha = on ? 1.0 : IOSTOUCH_IDLE_ALPHA;
+	btn_views[i].alpha = ButtonAlpha( i, on );
 	if( !( i == BTN_FLASH && flash_group ))
 		btn_views[i].backgroundColor = [UIColor colorWithWhite:1.0 alpha:on ? 0.4 : 0.15];
 
@@ -1038,7 +1134,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 
 - (void)closeTray
 {
-	tray_open = gyro_row_open = cam_row_open = 0;
+	tray_open = gyro_row_open = cam_row_open = opacity_open = 0;
 	level_counting = 0;
 	[self updateShown];
 }
@@ -1053,7 +1149,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		return;
 
 	run_lit = lit;
-	run_marker.alpha = lit ? 1.0 : IOSTOUCH_IDLE_ALPHA;
+	run_marker.alpha = ( lit ? 1.0 : IOSTOUCH_IDLE_ALPHA ) * ctrl_opacity;
 	run_marker.backgroundColor = lit ? [UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.55] : [UIColor colorWithWhite:0.0 alpha:0.35];
 	run_marker.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:lit ? 0.85 : 0.45].CGColor;
 
@@ -1061,7 +1157,7 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 	[CATransaction setDisableActions:YES];
 	run_chevrons.strokeColor = [UIColor colorWithWhite:1.0 alpha:lit ? 1.0 : 0.85].CGColor;
 	run_link.strokeColor = lit ? [UIColor colorWithRed:0.47 green:0.78 blue:1.0 alpha:0.95].CGColor : [UIColor colorWithWhite:1.0 alpha:0.45].CGColor;
-	run_link.opacity = lit ? 1.0 : IOSTOUCH_IDLE_ALPHA;
+	run_link.opacity = ( lit ? 1.0 : IOSTOUCH_IDLE_ALPHA ) * ctrl_opacity;
 	[CATransaction commit];
 }
 
@@ -1195,6 +1291,12 @@ static CGFloat Dist( CGPoint a, CGPoint b )
 		[[NSUserDefaults standardUserDefaults] setFloat:look_sens[look_sens_i] forKey:KEY_LOOK_SENS];
 		[self showToast:[NSString stringWithFormat:@"Look sensitivity %gx%@", look_sens[look_sens_i],
 			look_sens_i == LOOK_SENS_DEFAULT ? @" (default)" : @" — hold SENS for the default"]];
+		break;
+	case BTN_TRAY_OPACITY:
+		opacity_open = !opacity_open;
+		if( opacity_open )
+			gyro_row_open = cam_row_open = 0;
+		[self updateShown];
 		break;
 	case BTN_TRAY_FPS:
 		show_fps = !show_fps;
@@ -2498,6 +2600,13 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			[self updateShown];
 			[self updateLabels];
 			break;
+		case BTN_TRAY_OPACITY:
+			// held: back to full strength
+			[self setOpacity:1.0f];
+			[[NSUserDefaults standardUserDefaults] setFloat:ctrl_opacity forKey:KEY_OPACITY];
+			[self showToast:@"Controls back to full strength"];
+			[self updateLabels];
+			break;
 		case BTN_TRAY_SENS:
 			// held: back to the default
 			look_sens_i = LOOK_SENS_DEFAULT;
@@ -2507,7 +2616,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			break;
 		case BTN_TRAY_GYRO:
 			gyro_row_open = 1;
-			cam_row_open = 0;
+			cam_row_open = opacity_open = 0;
 			[self updateShown];
 			[self updateLabels];
 			break;
@@ -2528,6 +2637,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			break;
 		case BTN_TRAY_CAM:
 			cam_row_open = 1;
+			opacity_open = 0;
 			gyro_row_open = 0;
 			[self updateShown];
 			[self updateLabels];
