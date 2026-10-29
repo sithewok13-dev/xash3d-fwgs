@@ -2781,6 +2781,8 @@ void IOSTouch_SetShowTaps( int on )
 	[[NSUserDefaults standardUserDefaults] setBool:show_taps forKey:KEY_SHOW_TAPS];
 }
 
+static UIWindow *probed; // the window IOSTapProbe watches
+
 static UIView *HostView( void *window )
 {
 	SDL_SysWMinfo info;
@@ -2886,17 +2888,12 @@ void IOSTouch_Frame( void *window, int ingame )
 		taps_view.frame = host.bounds;
 		[host bringSubviewToFront:taps_view];
 
-		if( host.window )
+		if( host.window && probed != host.window )
 		{
-			static UIWindow *probed;
-
-			if( probed != host.window )
-			{
-				IOSTapProbe *probe = [[IOSTapProbe alloc] init];
-				[host.window addGestureRecognizer:probe];
-				[probe release];
-				probed = host.window;
-			}
+			IOSTapProbe *probe = [[IOSTapProbe alloc] init];
+			[host.window addGestureRecognizer:probe];
+			[probe release];
+			probed = host.window;
 		}
 
 		if( ingame != overlay_shown )
@@ -3015,4 +3012,40 @@ void IOSTouch_TakeLook( float *yaw, float *pitch )
 	*yaw = look_yaw;
 	*pitch = look_pitch;
 	look_yaw = look_pitch = 0.0f;
+}
+
+/*
+IOSTouch_Detach
+
+The engine is about to close its window (a game switch, or Quit back to
+Choose a game). Our overlay lives inside SDL's view and our tap probe on its
+window: take them out first. Left there, the next change to them (the next
+game's IOSTouch_Frame moving the overlay over, a box closing) lays out SDL's
+dead view controller, which reads its freed SDL_Window and crashes.
+*/
+void IOSTouch_Detach( void )
+{
+	@autoreleasepool
+	{
+		if( !overlay )
+			return;
+
+		// a box we put up over the game (GAMES' question) goes with it
+		UIViewController *vc = overlay.window.rootViewController;
+		if( vc.presentedViewController )
+			[vc dismissViewControllerAnimated:NO completion:nil];
+
+		[overlay closeTray];
+		overlay.hidden = YES;
+		overlay_shown = 0;
+		[overlay removeFromSuperview];
+		[taps_view removeFromSuperview];
+
+		for( UIGestureRecognizer *g in [[probed.gestureRecognizers copy] autorelease] )
+		{
+			if( [g isKindOfClass:[IOSTapProbe class]] )
+				[probed removeGestureRecognizer:g];
+		}
+		probed = nil;
+	}
 }

@@ -166,5 +166,11 @@ void SDLash_Shutdown( void )
 	SDLash_ShutdownSensors();
 	SDLash_FreeCursors();
 
+#if XASH_IOS
+	// a game switch runs the engine again in this process: SDL stays up, only
+	// the game's window closes and opens. SDL started over from scratch on
+	// UIKit came back with a black or sideways window
+#else
 	SDL_Quit();
+#endif
 }

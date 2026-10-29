@@ -1414,6 +1414,10 @@ void Host_ShutdownWithReason( const char *reason )
 
 	host.shutdown_issued = true;
 	IOS_STEP( "shutdown" );
+#if XASH_IOS && !XASH_DEDICATED
+	// our touch controls out of SDL's view before its window closes
+	IOSTouch_Detach();
+#endif
 
 	if( reason != NULL )
 		Q_strncpy( reasoncopy, reason, sizeof( reasoncopy ));

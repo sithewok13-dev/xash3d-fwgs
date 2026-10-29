@@ -59,6 +59,7 @@ const char *IOS_GetExecDir( void );
 void IOS_LaunchDialog( void );
 void IOS_RelaunchReset( void ); // our state, before the engine runs again
 void IOS_Trace( const char *fmt, ... ) FORMAT_CHECK( 1 ); // Documents/xash-trace.txt
+void IOSTouch_Detach( void ); // before the engine's window closes
 void Host_ResetForRelaunch( void );
 void IOS_GetWindowInsets( void *window, float insets[4] );
 void IOS_TouchFrame( void );

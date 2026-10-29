@@ -449,7 +449,7 @@ static BOOL IsAnniversaryData( NSString *root )
 		card.layer.borderWidth = 1;
 		card.layer.borderColor = ( ready ? [UIColor colorWithRed:1.0 green:0.6 blue:0.1 alpha:0.9] : [UIColor colorWithWhite:0.3 alpha:1.0] ).CGColor;
 		card.backgroundColor = [UIColor colorWithWhite:ready ? 0.15 : 0.10 alpha:1.0];
-		// a tap starts the game, holding it opens its options (see cardDown:)
+		// a tap starts the game, a long press opens its options (see cardDown:)
 		[card addTarget:self action:@selector( cardDown: ) forControlEvents:UIControlEventTouchDown];
 		[card addTarget:self action:@selector( cardTapped: ) forControlEvents:UIControlEventTouchUpInside];
 		[card addTarget:self action:@selector( cardLeft: ) forControlEvents:UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
@@ -495,7 +495,7 @@ static BOOL IsAnniversaryData( NSString *root )
 
 	NSString *where = [root isEqualToString:docs] ? @"" :
 		[NSString stringWithFormat:@" (found in \"%@\")", [root lastPathComponent]];
-	footer.text = [NSString stringWithFormat:@"Tap a game to play. Hold Half-Life for co-op, Multiplayer Modes to pick a mode.\nGame files go in Files › On My %@ › %@%@.",
+	footer.text = [NSString stringWithFormat:@"Tap a game to play. Long press Half-Life for co-op, or Multiplayer Modes to pick a mode.\nGame files go in Files › On My %@ › %@%@.",
 		[UIDevice currentDevice].model,
 		[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app", where];
 
@@ -504,9 +504,9 @@ static BOOL IsAnniversaryData( NSString *root )
 		footer.text = [footer.text stringByAppendingFormat:@"\n%@", join];
 }
 
-#define HOLD_TIME 0.5 // seconds a card is held to open its options
+#define HOLD_TIME 0.5 // seconds of a long press on a card to open its options
 
-// what holding the card opens, NULL: nothing (a tap just starts the game)
+// what a long press on the card opens, NULL: nothing (a tap just starts the game)
 - (SEL)optionsForCard:(UIButton *)card
 {
 	const launcher_game_t *g = &games[card.tag];
@@ -536,15 +536,12 @@ static BOOL IsAnniversaryData( NSString *root )
 	if( ![self optionsForCard:card] )
 		return;
 
-	// a ring around the middle of the card fills up over the hold
-	CGFloat size = 64;
-	CGRect box = CGRectMake(( card.bounds.size.width - size ) / 2, ( card.bounds.size.height - size ) / 2, size, size );
+	// the card's own border lights up all the way round over the long press
 	ring = [[CAShapeLayer layer] retain];
-	ring.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake( CGRectGetMidX( box ), CGRectGetMidY( box ))
-		radius:size / 2 startAngle:-M_PI_2 endAngle:-M_PI_2 + 2 * M_PI clockwise:YES].CGPath;
-	ring.fillColor = [UIColor colorWithWhite:0.0 alpha:0.35].CGColor;
+	ring.path = [UIBezierPath bezierPathWithRoundedRect:CGRectInset( card.bounds, 2, 2 ) cornerRadius:card.layer.cornerRadius].CGPath;
+	ring.fillColor = [UIColor clearColor].CGColor;
 	ring.strokeColor = [UIColor colorWithRed:1.0 green:0.6 blue:0.1 alpha:1.0].CGColor;
-	ring.lineWidth = 5;
+	ring.lineWidth = 4;
 	ring.lineCap = kCALineCapRound;
 	ring.strokeEnd = 1.0;
 	[card.layer addSublayer:ring];
@@ -586,12 +583,12 @@ static BOOL IsAnniversaryData( NSString *root )
 	[self stopHold];
 	if( held )
 	{
-		held = NO; // that was a hold, its options are open
+		held = NO; // that was a long press, its options are open
 		return;
 	}
 
 	// Half-Life starts single player, Multiplayer Modes its menu (to join
-	// a game): the rest is held for
+	// a game): the rest is a long press
 	if( state == GAME_READY )
 	{
 		chosen = (int)card.tag;

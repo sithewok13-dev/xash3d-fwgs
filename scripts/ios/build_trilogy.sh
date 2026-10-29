@@ -28,18 +28,10 @@ HLSDK_OPTIONAL_REPO=${HLSDK_OPTIONAL_REPO:-https://github.com/sithewok13-dev/hls
 HLSDK_OPTIONAL_GAMES=${HLSDK_OPTIONAL_GAMES-"ios-ag:ag ios-coop:valve:hlcoop"}
 IPA_NAME=${IPA_NAME:-Xash3D-iOS-unsigned.ipa}
 
-# The main menu's top-right buttons are for desktop windows: on a phone
-# minimize does nothing and close is too small to hit. Drop minimize and
-# make close twice the size, in our menus and Counter-Strike's (both are
-# mainui_cpp; patched at build time so the submodules stay upstream's).
-patch_menu_buttons() {
-	perl -pi -e 's/^\s*AddItem\( minimizeBtn \);\s*$//; s/quitButton\.SetRect\( uiStatic\.width - 36, 13, 32, 32 \);/quitButton.SetRect( uiStatic.width - 76, 10, 64, 64 );/' "$1"
-	if grep -q 'AddItem( minimizeBtn )' "$1" || ! grep -q 'uiStatic.width - 76, 10, 64, 64' "$1"; then
-		echo "menu buttons patch didn't apply to $1"
-		return 1
-	fi
-}
-patch_menu_buttons 3rdparty/mainui/menus/Main.cpp
+# phone-sized menus (bigger close button and text), ours and CS's
+. scripts/ios/patch_mainui.sh
+patch_menu_buttons 3rdparty/mainui
+patch_menu_text 3rdparty/mainui
 
 mkdir -p build
 ./waf configure --enable-lto --ios build install --destdir=build/ios 2>&1 | tee build/waf.log
@@ -126,7 +118,9 @@ build_cs16() {
 	csmod="$cssrc/3rdparty/ReGameDLL_CS/regamedll/public/interface.cpp"
 	perl -0pi -e 's|(_snprintf\(str, sizeof\(str\), "%s\.dylib", szAbsoluteModuleName\);\r?\n\t\thDLL = dlopen\(str, RTLD_NOW\);\r?\n)|$1\t\tif (!hDLL)\n\t\t{\n\t\t\t_snprintf(str, sizeof(str), "\@executable_path/%s", pModuleName);\n\t\t\thDLL = dlopen(str, RTLD_NOW);\n\t\t}\n|' "$csmod"
 	grep -q '@executable_path/%s' "$csmod" || { echo "cs16-client: filesystem path patch didn't apply"; return 1; }
-	patch_menu_buttons "$cssrc/3rdparty/mainui_cpp/menus/Main.cpp" || return 1
+	patch_menu_buttons "$cssrc/3rdparty/mainui_cpp" || return 1
+	patch_menu_text "$cssrc/3rdparty/mainui_cpp" || return 1
+	patch_cs_play_first "$cssrc/3rdparty/mainui_cpp" || return 1
 	cmake -S "$cssrc" -B "$cssrc/build" \
 		-DCMAKE_SYSTEM_NAME=iOS \
 		-DCMAKE_OSX_ARCHITECTURES=arm64 \
