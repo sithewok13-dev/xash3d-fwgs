@@ -30,7 +30,7 @@ GNU General Public License for more details.
 #if XASH_IOS
 #include <execinfo.h>
 #include <dlfcn.h>
-#include <ucontext.h>
+#include <sys/ucontext.h>
 #endif
 
 #if XASH_ANDROID
