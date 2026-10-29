@@ -18,6 +18,7 @@ GNU General Public License for more details.
 #include "keydefs.h"
 #include "ios_touch.h"
 
+static qboolean ios_paused; // paused by us, for "Switch game"
 static const char *ios_touch_cmds[IOSTOUCH_CMD_COUNT] =
 {
 	"attack", "attack2", "duck", "use", "jump", "reload",
@@ -62,8 +63,21 @@ static void IOS_TouchRunAction( int action )
 		Cvar_Set( "cl_showfps", "0" );
 		break;
 	case IOSTOUCH_ACT_GAMES:
-		// the engine shuts down and comes back out to "Choose a game"
+		// the engine shuts down; the picked game starts at the app's next launch
 		Cbuf_AddText( "quit\n" );
+		break;
+	case IOSTOUCH_ACT_PAUSE:
+		// pause toggles: only if it isn't paused already, and remembered
+		if( !cl.paused && cl.maxclients == 1 )
+		{
+			Cbuf_AddText( "pause\n" );
+			ios_paused = true;
+		}
+		break;
+	case IOSTOUCH_ACT_UNPAUSE:
+		if( ios_paused && cl.paused )
+			Cbuf_AddText( "pause\n" );
+		ios_paused = false;
 		break;
 	}
 }

@@ -32,6 +32,7 @@ GNU General Public License for more details.
 #include <math.h>
 #include <string.h>
 #include "ios_touch.h"
+#include "launcher_menu.h"
 
 extern const char *g_buildcommit;
 
@@ -1041,19 +1042,17 @@ static CGFloat ButtonAlpha( int i, int on )
 - (void)confirmGames
 {
 	UIViewController *host = self.window.rootViewController;
-	UIAlertController *alert;
 
 	if( !host || host.presentedViewController )
 		return;
 
-	alert = [UIAlertController alertControllerWithTitle:@"Switch game?"
-		message:@"Unsaved progress will be lost. Pick the next game, then the app closes: tap its notification to start it." preferredStyle:UIAlertControllerStyleAlert];
-	[alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-	[alert addAction:[UIAlertAction actionWithTitle:@"Switch game" style:UIAlertActionStyleDestructive handler:^( UIAlertAction *a ) {
-		[self releaseAll];
-		QueueAction( IOSTOUCH_ACT_GAMES );
-	}]];
-	[host presentViewController:alert animated:YES completion:nil];
+	// "Switch game" over the game, paused behind it: Cancel goes back to it
+	[self releaseAll];
+	[self closeTray];
+	QueueAction( IOSTOUCH_ACT_PAUSE );
+	IOS_PresentSwitch( host, ^( int picked ) {
+		QueueAction( picked ? IOSTOUCH_ACT_GAMES : IOSTOUCH_ACT_UNPAUSE );
+	});
 }
 
 - (void)setCheat:(int)on

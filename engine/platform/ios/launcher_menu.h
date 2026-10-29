@@ -23,4 +23,11 @@ char **IOS_RunLauncher( const char *docsdir, int *argc );
 // IOS_RunLauncher), a notification to tap, and the app closes. No return.
 void IOS_RunSwitch( const char *docsdir ) __attribute__(( noreturn ));
 
+#ifdef __OBJC__
+@class UIViewController;
+// GAMES during a game: the picker shown over it; finished( 1 ) when a game
+// was picked (the running one should end), finished( 0 ) on Cancel
+void IOS_PresentSwitch( UIViewController *host, void (^finished)( int picked ));
+#endif
+
 #endif // LAUNCHER_MENU_H

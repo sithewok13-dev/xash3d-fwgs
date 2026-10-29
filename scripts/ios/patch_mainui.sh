@@ -3,11 +3,11 @@
 # Counter-Strike's copy of them, applied at build time so both submodules
 # stay as upstream has them. Each fails loudly if upstream code moved.
 
-# The top-right buttons are for desktop windows: on a phone minimize does
-# nothing and close is too small to hit. No minimize, close twice the size.
+# The top-right minimize and close buttons are for desktop windows: an iOS
+# app is closed the iOS way. Neither is shown (Quit stays in the list).
 patch_menu_buttons() {
-	perl -pi -e 's/^\s*AddItem\( minimizeBtn \);\s*$//; s/quitButton\.SetRect\( uiStatic\.width - 36, 13, 32, 32 \);/quitButton.SetRect( uiStatic.width - 76, 10, 64, 64 );/' "$1/menus/Main.cpp"
-	if grep -q 'AddItem( minimizeBtn )' "$1/menus/Main.cpp" || ! grep -q 'uiStatic.width - 76, 10, 64, 64' "$1/menus/Main.cpp"; then
+	perl -pi -e 's/^\s*AddItem\( (minimizeBtn|quitButton) \);\s*$//' "$1/menus/Main.cpp"
+	if grep -qE 'AddItem\( (minimizeBtn|quitButton) \)' "$1/menus/Main.cpp"; then
 		echo "menu buttons patch didn't apply to $1"
 		return 1
 	fi
