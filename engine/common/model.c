@@ -179,6 +179,12 @@ Mod_Init
 */
 void Mod_Init( void )
 {
+	// a previous in-process run (iOS game switch) left pointers into freed pools
+	memset( mod_known, 0, sizeof( mod_known ));
+	memset( mod_crcinfo, 0, sizeof( mod_crcinfo ));
+	memset( &world, 0, sizeof( world ));
+	mod_numknown = 0;
+
 	com_studiocache = Mem_AllocPool( "Studio Cache" );
 	Cvar_RegisterVariable( &mod_studiocache );
 	Cvar_RegisterVariable( &r_wadtextures );

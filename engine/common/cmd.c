@@ -1436,6 +1436,7 @@ Cmd_Init
 void Cmd_Init( void )
 {
 	cmd_pool = Mem_AllocPoolExt( "Console Commands", MEM_SMALL_ALLOC_OPT );
+	Cbuf_Clear(); // leftovers from a previous in-process run (iOS game switch)
 	cmd_functions = NULL;
 	cmd_condition = 0;
 	cmd_wait = 0;

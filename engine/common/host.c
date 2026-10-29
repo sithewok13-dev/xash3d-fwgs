@@ -1360,6 +1360,18 @@ iOS: before Host_Main runs again in the same process (the launcher's
 void Host_ResetForRelaunch( void )
 {
 	memset( &host, 0, sizeof( host ));
+
+	// these keep pointers into the memory pools and libraries
+	// of the previous run, which are all gone now
+	memset( &sv, 0, sizeof( sv ));
+	memset( &svs, 0, sizeof( svs ));
+	memset( &svgame, 0, sizeof( svgame ));
+#if !XASH_DEDICATED
+	memset( &cl, 0, sizeof( cl ));
+	memset( &cls, 0, sizeof( cls ));
+	memset( &clgame, 0, sizeof( clgame ));
+	memset( &gameui, 0, sizeof( gameui ));
+#endif
 }
 #endif
 

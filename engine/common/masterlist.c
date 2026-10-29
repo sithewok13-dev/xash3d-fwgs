@@ -757,6 +757,10 @@ Initialize master server list
 */
 void NET_InitMasters( void )
 {
+	// the old lists, if any, were in the host's memory, gone with an engine
+	// that ran before in the same process (iOS, back to its launcher)
+	memset( &ml, 0, sizeof( ml ));
+
 	Cmd_AddRestrictedCommand( "addmaster", NET_AddMaster_f, "add address to masterserver list" );
 	Cmd_AddRestrictedCommand( "addmasterstatic", NET_AddMasterStatic_f, "add static HTTP masterserver base URL" );
 	Cmd_AddRestrictedCommand( "clearmasters", NET_ClearMasters_f, "clear masterserver list" );

@@ -60,14 +60,15 @@ build_hlsdk() {
 	git -C "$src" log -1 --format='hlsdk %h %s'
 
 	# Release builds of hlsdk are broken on iOS upstream, so build Debug,
-	# like scripts/gha/build_ios.sh does.
+	# like scripts/gha/build_ios.sh does. Asserts are off: iOS keeps a game
+	# library loaded after a game switch, and PM_Init asserts on a second init.
 	cmake -S "$src" -B "$src/build" \
 		-DCMAKE_SYSTEM_NAME=iOS \
 		-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
 		-DCMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT=0 \
 		-DCMAKE_INSTALL_PREFIX="$prefix" \
 		-DGAMEDIR="$gamedir" \
-		-DCMAKE_BUILD_TYPE=Debug $extra || return 1
+		-DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS_DEBUG="-g -DNDEBUG" -DCMAKE_CXX_FLAGS_DEBUG="-g -DNDEBUG" $extra || return 1
 	cmake --build "$src/build" --target install -j"$(sysctl -n hw.ncpu)" || return 1
 }
 
