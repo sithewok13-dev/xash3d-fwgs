@@ -128,6 +128,7 @@ static void Sys_Crash( int signal, siginfo_t *si, void *context )
 
 #if XASH_IOS
 	len = Sys_CrashDetailsIOS( logfd, crash_message, len, sizeof( crash_message ), context );
+	IOS_Trace( "crash\n%s", crash_message );
 #elif HAVE_LIBBACKTRACE
 	qboolean detailed_message = false;
 	if( have_libbacktrace && !detailed_message )

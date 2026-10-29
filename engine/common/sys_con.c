@@ -98,6 +98,15 @@ void Sys_InitLog( void )
 		mode = "a+";
 	else mode = "w+";
 
+#if XASH_IOS
+	// a game switch runs the engine again in this process: keep the log
+	// of the run before it
+	static qboolean log_started;
+	if( log_started )
+		mode = "a+";
+	log_started = true;
+#endif
+
 	if( Host_IsDedicated( ))
 		Q_strncpy( s_ld.title, XASH_DEDICATED_SERVER_NAME " " XASH_VERSION, sizeof( s_ld.title ));
 	else Q_strncpy( s_ld.title, XASH_ENGINE_NAME " " XASH_VERSION, sizeof( s_ld.title ));

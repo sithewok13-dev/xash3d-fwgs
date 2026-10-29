@@ -885,6 +885,10 @@ void Con_Init( void )
 	if( host.type == HOST_DEDICATED )
 		return; // dedicated server already have console
 
+	// a previous in-process run (iOS game switch) left pointers into its
+	// freed memory here, the font among them
+	memset( &con, 0, sizeof( con ));
+
 	// must be init before startup video subsystem
 	Cvar_RegisterVariable( &scr_conspeed );
 	Cvar_RegisterVariable( &con_notifytime );

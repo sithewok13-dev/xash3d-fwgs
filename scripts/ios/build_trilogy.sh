@@ -106,6 +106,13 @@ build_cs16() {
 	rm -rf "$cssrc" "$staged"
 	git clone --recursive --depth 1 --shallow-submodules "$CS16_REPO" "$cssrc" || return 1
 	git -C "$cssrc" log -1 --format='cs16-client %h %s'
+	# The CS server opens the engine's filesystem_stdio itself, from the
+	# current directory, which on iOS is Documents, not the app: without it
+	# bot chatter loading reads a NULL filesystem (Training crashed). Also try
+	# the app's own folder, where the engine loaded it from.
+	csmod="$cssrc/3rdparty/ReGameDLL_CS/regamedll/public/interface.cpp"
+	perl -0pi -e 's|(_snprintf\(str, sizeof\(str\), "%s\.dylib", szAbsoluteModuleName\);\r?\n\t\thDLL = dlopen\(str, RTLD_NOW\);\r?\n)|$1\t\tif (!hDLL)\n\t\t{\n\t\t\t_snprintf(str, sizeof(str), "\@executable_path/%s", pModuleName);\n\t\t\thDLL = dlopen(str, RTLD_NOW);\n\t\t}\n|' "$csmod"
+	grep -q '@executable_path/%s' "$csmod" || { echo "cs16-client: filesystem path patch didn't apply"; return 1; }
 	cmake -S "$cssrc" -B "$cssrc/build" \
 		-DCMAKE_SYSTEM_NAME=iOS \
 		-DCMAKE_OSX_ARCHITECTURES=arm64 \

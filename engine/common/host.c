@@ -40,6 +40,12 @@ GNU General Public License for more details.
 #include "platform/platform.h"
 
 host_parm_t host;	// host parms
+
+#if XASH_IOS
+#define IOS_STEP( step ) IOS_Trace( "%s", step )
+#else
+#define IOS_STEP( step )
+#endif
 static jmp_buf return_from_main_buf;
 
 /*
@@ -1037,6 +1043,7 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 		host.type = HOST_NORMAL;
 #endif
 
+	IOS_STEP( "memory" );
 	Memory_Init(); // init memory subsystem
 
 	host.mempool = Mem_AllocPool( "Zone Engine" );
@@ -1090,7 +1097,9 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 	if( Sys_GetIntFromCmdLine( "-sys_ticrate", &ticrate ))
 		Cvar_DirectSetValue( &sys_ticrate, bound( MIN_FPS, ticrate, MAX_FPS_HARD ));
 
+	IOS_STEP( "log" );
 	Sys_InitLog();
+	IOS_STEP( "console" );
 	Con_Init(); // early console running to catch all the messages
 
 	XRcon_Init();
@@ -1106,8 +1115,11 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 #if XASH_DEDICATED
 	Platform_SetupSigtermHandling();
 #endif
+	IOS_STEP( "platform (SDL)" );
 	Platform_Init( Host_IsDedicated( ) || developer >= DEV_EXTENDED );
+	IOS_STEP( "filesystem" );
 	FS_Init();
+	IOS_STEP( "filesystem done" );
 
 	// print current developer level to simplify processing users feedback
 	if( developer > 0 )
@@ -1228,6 +1240,7 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
 #endif
 		FCVAR_READ_ONLY, "indicates if engine was compiled with extended msurface_t struct" );
 
+	IOS_STEP( "models, network" );
 	Mod_Init();
 	NET_Init();
 	NET_InitMasters();
@@ -1244,8 +1257,11 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
 		Cvar_Get( "host_allow_changegame", "0", FCVAR_READ_ONLY, "allows to change games" );
 	}
 
+	IOS_STEP( "server" );
 	SV_Init();
+	IOS_STEP( "client (video, sound, client library)" );
 	CL_Init();
+	IOS_STEP( "client done" );
 
 	HTTP_Init();
 	SoundList_Init();
@@ -1270,6 +1286,7 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
 		progname++;
 
 	// post initializations
+	IOS_STEP( "configs, command line" );
 	switch( host.type )
 	{
 	case HOST_NORMAL:
@@ -1336,6 +1353,7 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
 
 	// check after all configs were executed
 	HPAK_CheckIntegrity( hpk_custom_file.string );
+	IOS_STEP( "main loop" );
 
 	// main window message loop
 	while( host.status != HOST_CRASHED )
@@ -1395,6 +1413,7 @@ void Host_ShutdownWithReason( const char *reason )
 		return;
 
 	host.shutdown_issued = true;
+	IOS_STEP( "shutdown" );
 
 	if( reason != NULL )
 		Q_strncpy( reasoncopy, reason, sizeof( reasoncopy ));
@@ -1431,6 +1450,12 @@ void Host_ShutdownWithReason( const char *reason )
 	Mem_FreePool( &host.mempool );
 
 	// restore filter
+#if XASH_IOS
+	// the engine runs again in this process (game switch): keep it, so a
+	// crash early in the next run, before it's set up again, is reported
+	IOS_Trace( "stopped: %s", reasoncopy );
+#else
 	Sys_RestoreCrashHandler();
+#endif
 	Sys_CloseLog( reason != NULL ? reasoncopy : NULL );
 }

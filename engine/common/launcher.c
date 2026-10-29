@@ -42,12 +42,23 @@ int main( int argc, char **argv )
 	// iOS has no way to start the app again, so Quit (a game's own, or
 	// GAMES in the touch controls' tray) comes back out of Host_Main to
 	// "Choose a game", and the engine runs again in the same process
-	for( ;; )
+	for( int run = 1; ; run++ )
 	{
+		IOS_Trace( "run %d: Choose a game", run );
 		IOS_LaunchDialog();
 		szArgc = IOS_GetArgs( &szArgv );
+
+		char args[1024] = "";
+		for( int i = 1; i < szArgc; i++ )
+		{
+			Q_strncat( args, " ", sizeof( args ));
+			Q_strncat( args, szArgv[i], sizeof( args ));
+		}
+		IOS_Trace( "run %d: start engine:%s", run, args );
+
 		Host_Main( szArgc, szArgv, XASH_GAMEDIR, 0, Sys_ChangeGame );
 
+		IOS_Trace( "run %d: engine stopped, resetting", run );
 		IOS_RelaunchReset();
 		Host_ResetForRelaunch();
 	}
