@@ -19,6 +19,7 @@ GNU General Public License for more details.
 // example Documents/Half-Life/valve, as copied straight from Steam.
 
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ifaddrs.h>
@@ -325,6 +326,8 @@ static BOOL IsAnniversaryData( NSString *root )
 	int chosen;
 	NSString *agmode; // the Multiplayer Modes card's mode, nil: just start
 	NSString *coopmap; // Half-Life co-op: the map to host, nil: not co-op
+	CAShapeLayer *ring; // fills while a card with options is held
+	BOOL held; // the hold opened the options: its touch up isn't a tap
 }
 @end
 
@@ -434,7 +437,10 @@ static BOOL IsAnniversaryData( NSString *root )
 		card.layer.borderWidth = 1;
 		card.layer.borderColor = ( ready ? [UIColor colorWithRed:1.0 green:0.6 blue:0.1 alpha:0.9] : [UIColor colorWithWhite:0.3 alpha:1.0] ).CGColor;
 		card.backgroundColor = [UIColor colorWithWhite:ready ? 0.15 : 0.10 alpha:1.0];
+		// a tap starts the game, holding it opens its options (see cardDown:)
+		[card addTarget:self action:@selector( cardDown: ) forControlEvents:UIControlEventTouchDown];
 		[card addTarget:self action:@selector( cardTapped: ) forControlEvents:UIControlEventTouchUpInside];
+		[card addTarget:self action:@selector( cardLeft: ) forControlEvents:UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
 
 		UILabel *name = [[UILabel alloc] init];
 		name.text = @( g->title );
@@ -477,7 +483,7 @@ static BOOL IsAnniversaryData( NSString *root )
 
 	NSString *where = [root isEqualToString:docs] ? @"" :
 		[NSString stringWithFormat:@" (found in \"%@\")", [root lastPathComponent]];
-	footer.text = [NSString stringWithFormat:@"Game files go in Files › On My %@ › %@%@.",
+	footer.text = [NSString stringWithFormat:@"Tap a game to play. Hold Half-Life for co-op, Multiplayer Modes to pick a mode.\nGame files go in Files › On My %@ › %@%@.",
 		[UIDevice currentDevice].model,
 		[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app", where];
 
@@ -486,23 +492,94 @@ static BOOL IsAnniversaryData( NSString *root )
 		footer.text = [footer.text stringByAppendingFormat:@"\n%@", join];
 }
 
+#define HOLD_TIME 0.5 // seconds a card is held to open its options
+
+// what holding the card opens, NULL: nothing (a tap just starts the game)
+- (SEL)optionsForCard:(UIButton *)card
+{
+	const launcher_game_t *g = &games[card.tag];
+
+	if( GameState( root, g ) != GAME_READY )
+		return NULL;
+	if( !strcmp( g->dir, "ag" ))
+		return @selector( pickAgMode: );
+	if( !strcmp( g->dir, "valve" ) && HasCoopLibrary( ))
+		return @selector( pickHalfLife: );
+	return NULL;
+}
+
+- (void)stopHold
+{
+	[NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector( cardHeld: ) object:nil];
+	[ring removeFromSuperlayer];
+	[ring release];
+	ring = nil;
+}
+
+- (void)cardDown:(UIButton *)card
+{
+	[self stopHold];
+	held = NO;
+
+	if( ![self optionsForCard:card] )
+		return;
+
+	// a ring around the middle of the card fills up over the hold
+	CGFloat size = 64;
+	CGRect box = CGRectMake(( card.bounds.size.width - size ) / 2, ( card.bounds.size.height - size ) / 2, size, size );
+	ring = [[CAShapeLayer layer] retain];
+	ring.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake( CGRectGetMidX( box ), CGRectGetMidY( box ))
+		radius:size / 2 startAngle:-M_PI_2 endAngle:-M_PI_2 + 2 * M_PI clockwise:YES].CGPath;
+	ring.fillColor = [UIColor colorWithWhite:0.0 alpha:0.35].CGColor;
+	ring.strokeColor = [UIColor colorWithRed:1.0 green:0.6 blue:0.1 alpha:1.0].CGColor;
+	ring.lineWidth = 5;
+	ring.lineCap = kCALineCapRound;
+	ring.strokeEnd = 1.0;
+	[card.layer addSublayer:ring];
+
+	CABasicAnimation *fill = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+	fill.fromValue = @0.0;
+	fill.toValue = @1.0;
+	fill.duration = HOLD_TIME;
+	[ring addAnimation:fill forKey:@"fill"];
+
+	[self performSelector:@selector( cardHeld: ) withObject:card afterDelay:HOLD_TIME];
+}
+
+- (void)cardHeld:(UIButton *)card
+{
+	SEL options = [self optionsForCard:card];
+
+	[self stopHold];
+	held = YES;
+
+	UIImpactFeedbackGenerator *bump = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+	[bump impactOccurred];
+	[bump release];
+
+	if( options )
+		[self performSelector:options withObject:card];
+}
+
+- (void)cardLeft:(UIButton *)card
+{
+	[self stopHold];
+}
+
 - (void)cardTapped:(UIButton *)card
 {
 	const launcher_game_t *g = &games[card.tag];
 	game_state_t state = GameState( root, g );
 
-	if( state == GAME_READY && !strcmp( g->dir, "ag" ))
+	[self stopHold];
+	if( held )
 	{
-		[self pickAgMode:card];
+		held = NO; // that was a hold, its options are open
 		return;
 	}
 
-	if( state == GAME_READY && !strcmp( g->dir, "valve" ) && HasCoopLibrary( ))
-	{
-		[self pickHalfLife:card];
-		return;
-	}
-
+	// Half-Life starts single player, Multiplayer Modes its menu (to join
+	// a game): the rest is held for
 	if( state == GAME_READY )
 	{
 		chosen = (int)card.tag;
