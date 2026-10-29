@@ -572,6 +572,10 @@ void Key_Init( void )
 	Cmd_AddCommand( "bindlist", Key_Bindlist_f, "display current key bindings" );
 	Cmd_AddCommand( "makehelp", Key_EnumCmds_f, "write help.txt that contains all console cvars and cmds" );
 
+	// on iOS the engine restarts in-process with fresh memory pools,
+	// so old binding pointers are stale
+	memset( keys, 0, sizeof( keys ));
+
 	// setup default binding. "unbindall" from config.cfg will be reset it
 	for( int i = 0; i < ARRAYSIZE( keynames ); i++ )
 		Key_SetBinding( keynames[i].keynum, keynames[i].binding );

@@ -213,6 +213,13 @@ static void FS_UnloadProgs( void )
 		COM_FreeLibrary( fs_hInstance );
 		fs_hInstance = 0;
 	}
+
+	// nothing left pointing into the unloaded library: FS_FindLibrary
+	// tells "no filesystem yet" by g_fsapi.FindLibrary, and the engine
+	// can run again in the same process (iOS, back to its launcher)
+	memset( &g_fsapi, 0, sizeof( g_fsapi ));
+	fs_pfnCreateInterface = NULL;
+	FI = NULL;
 }
 
 #ifdef XASH_INTERNAL_GAMELIBS
