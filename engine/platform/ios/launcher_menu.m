@@ -20,6 +20,7 @@ GNU General Public License for more details.
 
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <UserNotifications/UserNotifications.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ifaddrs.h>
@@ -328,6 +329,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	int chosen;
 	NSString *agmode; // the Multiplayer Modes card's mode, nil: just start
 	NSString *coopmap; // Half-Life co-op: the map to host, nil: not co-op
+	NSString *heading; // "Choose a game", or "Switch game" after one
 	CAShapeLayer *ring; // fills while a card with options is held
 	BOOL held; // the hold opened the options: its touch up isn't a tap
 }
@@ -351,7 +353,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.07 blue:0.08 alpha:1.0];
 
 	UILabel *title = [[UILabel alloc] init];
-	title.text = @"Choose a game";
+	title.text = heading ?: @"Choose a game";
 	title.textColor = [UIColor whiteColor];
 	title.font = [UIFont systemFontOfSize:26 weight:UIFontWeightBold];
 
@@ -363,7 +365,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	footer = [[UILabel alloc] init];
 	footer.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
 	footer.font = [UIFont systemFontOfSize:13];
-	footer.numberOfLines = 4;
+	footer.numberOfLines = 5;
 
 	UIButton *options = [UIButton buttonWithType:UIButtonTypeSystem];
 	[options setTitle:@"Options" forState:UIControlStateNormal];
@@ -495,7 +497,8 @@ static BOOL IsAnniversaryData( NSString *root )
 
 	NSString *where = [root isEqualToString:docs] ? @"" :
 		[NSString stringWithFormat:@" (found in \"%@\")", [root lastPathComponent]];
-	footer.text = [NSString stringWithFormat:@"Tap a game to play. Long press Half-Life for co-op, or Multiplayer Modes to pick a mode.\nGame files go in Files › On My %@ › %@%@.",
+	footer.text = [NSString stringWithFormat:@"%@Tap a game to play. Long press Half-Life for co-op, or Multiplayer Modes to pick a mode.\nGame files go in Files › On My %@ › %@%@.",
+		heading ? @"Pick the next game: the app closes, then tap its notification (or the app) to start it.\n" : @"",
 		[UIDevice currentDevice].model,
 		[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app", where];
 
@@ -758,27 +761,11 @@ static void WriteHowTo( NSString *docs )
 		[text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
-char **IOS_RunLauncher( const char *docsdir, int *argc )
+// The picked game's command line, base directory first
+static NSArray *ChosenArgs( XashLauncherController *menu )
 {
-	WriteHowTo( @( docsdir ));
-
-	UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-	XashLauncherController *menu = [[XashLauncherController alloc] init];
-	NSMutableArray *args = [NSMutableArray array];
-
-	menu->docs = [@( docsdir ) retain];
-	window.rootViewController = menu;
-	[window makeKeyAndVisible];
-
-	@autoreleasepool {
-		while( menu->chosen < 0 )
-			[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
-	}
-
 	const launcher_game_t *g = &games[menu->chosen];
-
-	// the engine reads its base directory from here, see FS_DetermineRootDirectory
-	setenv( "XASH3D_BASEDIR", [menu->root fileSystemRepresentation], 1 );
+	NSMutableArray *args = [NSMutableArray array];
 
 	// Pick the server library by name: liblist.gam files from different Steam
 	// releases name it differently, ours are always <lib>_ios_arm64.dylib.
@@ -800,9 +787,32 @@ char **IOS_RunLauncher( const char *docsdir, int *argc )
 			[args addObject:arg];
 	}
 
-	window.hidden = YES;
-	[[NSNotificationCenter defaultCenter] removeObserver:menu];
+	return args;
+}
 
+// Shows the picker until a game is chosen: the controller, with its window
+static XashLauncherController *RunPicker( const char *docsdir, NSString *heading, UIWindow **out )
+{
+	UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+	XashLauncherController *menu = [[XashLauncherController alloc] init];
+
+	menu->docs = [@( docsdir ) retain];
+	menu->heading = [heading retain];
+	window.rootViewController = menu;
+	[window makeKeyAndVisible];
+
+	@autoreleasepool {
+		while( menu->chosen < 0 )
+			[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+	}
+
+	[[NSNotificationCenter defaultCenter] removeObserver:menu];
+	*out = window;
+	return menu;
+}
+
+static char **MakeArgv( NSArray *args, int *argc )
+{
 	// argv[0] is left empty like the old dialog did
 	char **argv = calloc( args.count + 2, sizeof( char * ));
 	for( NSUInteger i = 0; i < args.count; i++ )
@@ -810,4 +820,120 @@ char **IOS_RunLauncher( const char *docsdir, int *argc )
 
 	*argc = (int)args.count + 1;
 	return argv;
+}
+
+/*
+A game switch: iOS can't start an app again, and the engine isn't made to
+run twice in one process. So after a game the picker comes back, the pick
+is kept here and the app closes; opening it again (its notification, or
+the icon, within NEXT_GAME_TIME) starts that game straight away.
+*/
+#define KEY_NEXT_ARGS @"iosNextGameArgs"
+#define KEY_NEXT_ROOT @"iosNextGameRoot"
+#define KEY_NEXT_TIME @"iosNextGameTime"
+#define NEXT_GAME_TIME 600.0 // seconds
+
+static NSArray *TakeNextGame( NSString **root )
+{
+	NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+	NSArray *args = [d arrayForKey:KEY_NEXT_ARGS];
+	NSString *where = [d stringForKey:KEY_NEXT_ROOT];
+	double age = [NSDate timeIntervalSinceReferenceDate] - [d doubleForKey:KEY_NEXT_TIME];
+
+	[d removeObjectForKey:KEY_NEXT_ARGS];
+	[d removeObjectForKey:KEY_NEXT_ROOT];
+	[d removeObjectForKey:KEY_NEXT_TIME];
+
+	if( !args.count || !where || age < 0 || age > NEXT_GAME_TIME )
+		return nil;
+
+	*root = where;
+	return args;
+}
+
+char **IOS_RunLauncher( const char *docsdir, int *argc )
+{
+	NSString *root = nil;
+	NSArray *next;
+	UIWindow *window;
+
+	WriteHowTo( @( docsdir ));
+
+	// its "tap to start" notification, if it's still there, has done its job
+	[[UNUserNotificationCenter currentNotificationCenter] removeAllDeliveredNotifications];
+
+	// the game picked before the app closed
+	if(( next = TakeNextGame( &root )))
+	{
+		setenv( "XASH3D_BASEDIR", [root fileSystemRepresentation], 1 );
+		return MakeArgv( next, argc );
+	}
+
+	XashLauncherController *menu = RunPicker( docsdir, nil, &window );
+
+	// the engine reads its base directory from here, see FS_DetermineRootDirectory
+	setenv( "XASH3D_BASEDIR", [menu->root fileSystemRepresentation], 1 );
+
+	char **argv = MakeArgv( ChosenArgs( menu ), argc );
+	window.hidden = YES;
+	return argv;
+}
+
+// set from blocks that may run on other threads; statics, as a __block
+// variable moves when its block is copied and a pointer to it would not
+static volatile BOOL switch_done, switch_granted, switch_ok;
+
+// waits for a block's flag, the UI still running
+static void WaitFor( volatile BOOL *flag )
+{
+	while( !*flag )
+		[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+}
+
+void IOS_RunSwitch( const char *docsdir )
+{
+	UIWindow *window;
+	XashLauncherController *menu = RunPicker( docsdir, @"Switch game", &window );
+	NSString *title = @( games[menu->chosen].title );
+	NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+	UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+
+	[d setObject:ChosenArgs( menu ) forKey:KEY_NEXT_ARGS];
+	[d setObject:menu->root forKey:KEY_NEXT_ROOT];
+	[d setDouble:[NSDate timeIntervalSinceReferenceDate] forKey:KEY_NEXT_TIME];
+	[d synchronize];
+
+	// a banner to tap, right after the app closes (iOS asks the first time)
+	[center requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound
+		completionHandler:^( BOOL ok, NSError *err ) {
+		if( !ok )
+		{
+			switch_done = YES;
+			return;
+		}
+
+		UNMutableNotificationContent *content = [[[UNMutableNotificationContent alloc] init] autorelease];
+		content.title = [NSString stringWithFormat:@"Tap to start %@", title];
+		content.body = @"Or open the app within 10 minutes.";
+
+		UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:@"xash.nextgame" content:content
+			trigger:[UNTimeIntervalNotificationTrigger triggerWithTimeInterval:1 repeats:NO]];
+		[center addNotificationRequest:request withCompletionHandler:^( NSError *e ) {
+			switch_granted = e == nil;
+			switch_done = YES;
+		}];
+	}];
+	WaitFor( &switch_done );
+
+	// no notifications: say how it goes instead
+	if( !switch_granted )
+	{
+		UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Open the app again to start %@", title]
+			message:@"The app closes now; your pick starts when you open it again (within 10 minutes)." preferredStyle:UIAlertControllerStyleAlert];
+		[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) { switch_ok = YES; }]];
+		[menu presentViewController:alert animated:YES completion:nil];
+		WaitFor( &switch_ok );
+	}
+
+	exit( 0 );
 }

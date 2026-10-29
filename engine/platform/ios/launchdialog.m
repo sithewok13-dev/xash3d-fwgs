@@ -75,6 +75,11 @@ void IOS_LaunchDialog( void )
 	szArgv = IOS_RunLauncher( docsDir, &szArgc );
 }
 
+void IOS_SwitchDialog( void )
+{
+	IOS_RunSwitch( IOS_GetDocsDir( ));
+}
+
 char *IOS_GetUDID( void )
 {
 	static char udid[256];

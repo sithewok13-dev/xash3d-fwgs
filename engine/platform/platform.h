@@ -57,6 +57,7 @@ int IOS_GetArgs( char ***argv );
 const char *IOS_GetDocsDir( void );
 const char *IOS_GetExecDir( void );
 void IOS_LaunchDialog( void );
+void IOS_SwitchDialog( void ) NORETURN; // after a game: the next one, then the app closes
 void IOS_RelaunchReset( void ); // our state, before the engine runs again
 void IOS_Trace( const char *fmt, ... ) FORMAT_CHECK( 1 ); // Documents/xash-trace.txt
 void IOSTouch_Detach( void ); // before the engine's window closes

@@ -1046,10 +1046,10 @@ static CGFloat ButtonAlpha( int i, int on )
 	if( !host || host.presentedViewController )
 		return;
 
-	alert = [UIAlertController alertControllerWithTitle:@"Back to Choose a game?"
-		message:@"Unsaved progress will be lost." preferredStyle:UIAlertControllerStyleAlert];
+	alert = [UIAlertController alertControllerWithTitle:@"Switch game?"
+		message:@"Unsaved progress will be lost. Pick the next game, then the app closes: tap its notification to start it." preferredStyle:UIAlertControllerStyleAlert];
 	[alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-	[alert addAction:[UIAlertAction actionWithTitle:@"Choose a game" style:UIAlertActionStyleDestructive handler:^( UIAlertAction *a ) {
+	[alert addAction:[UIAlertAction actionWithTitle:@"Switch game" style:UIAlertActionStyleDestructive handler:^( UIAlertAction *a ) {
 		[self releaseAll];
 		QueueAction( IOSTOUCH_ACT_GAMES );
 	}]];

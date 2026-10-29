@@ -39,12 +39,12 @@ int main( int argc, char **argv )
 	// inject -dev -console into args if required
 	szArgc = PSVita_GetArgv( argc, argv, &szArgv );
 #elif XASH_IOS
-	// iOS has no way to start the app again, so Quit (a game's own, or
-	// GAMES in the touch controls' tray) comes back out of Host_Main to
-	// "Choose a game", and the engine runs again in the same process
-	for( int run = 1; ; run++ )
+	// One game per launch of the app: the engine isn't made to run twice in
+	// a process. Quit (a game's own, or GAMES in the touch controls' tray)
+	// comes back out of Host_Main to pick the next game, which starts when
+	// the app is opened again (it closes, with a notification to tap).
 	{
-		IOS_Trace( "run %d: Choose a game", run );
+		IOS_Trace( "Choose a game" );
 		IOS_LaunchDialog();
 		szArgc = IOS_GetArgs( &szArgv );
 
@@ -54,13 +54,12 @@ int main( int argc, char **argv )
 			Q_strncat( args, " ", sizeof( args ));
 			Q_strncat( args, szArgv[i], sizeof( args ));
 		}
-		IOS_Trace( "run %d: start engine:%s", run, args );
+		IOS_Trace( "start engine:%s", args );
 
 		Host_Main( szArgc, szArgv, XASH_GAMEDIR, 0, Sys_ChangeGame );
 
-		IOS_Trace( "run %d: engine stopped, resetting", run );
-		IOS_RelaunchReset();
-		Host_ResetForRelaunch();
+		IOS_Trace( "engine stopped: Switch game" );
+		IOS_SwitchDialog();
 	}
 #else
 	szArgc = argc;
