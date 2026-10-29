@@ -4,7 +4,8 @@ ios_trace.c - startup breadcrumbs for the iOS port
 A game switch runs the engine again in the same process. When something
 on that path kills the app before the engine log or the crash handler can
 say anything, Documents/xash-trace.txt still shows the last step reached:
-each line goes straight to disk.
+each line goes straight to disk. xash-trace-previous.txt is the launch
+before.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -32,10 +33,14 @@ void IOS_Trace( const char *fmt, ... )
 
 	if( fd < 0 )
 	{
-		char path[MAX_SYSPATH];
+		char path[MAX_SYSPATH], previous[MAX_SYSPATH];
 
-		// one app launch per file: emptied when the app starts
+		// one app launch per file, the launch before kept next to it:
+		// after a crash the app is usually opened again before the file
+		// is looked at
 		Q_snprintf( path, sizeof( path ), "%s/xash-trace.txt", IOS_GetDocsDir( ));
+		Q_snprintf( previous, sizeof( previous ), "%s/xash-trace-previous.txt", IOS_GetDocsDir( ));
+		rename( path, previous );
 		fd = open( path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0644 );
 		if( fd < 0 )
 			return;
