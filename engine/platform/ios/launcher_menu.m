@@ -30,6 +30,7 @@ GNU General Public License for more details.
 #include "launcher_menu.h"
 
 extern const char *g_buildcommit;
+const char *IOS_GetDocsDir( void );
 
 typedef struct launcher_game_s
 {
@@ -330,6 +331,8 @@ static BOOL IsAnniversaryData( NSString *root )
 	NSString *agmode; // the Multiplayer Modes card's mode, nil: just start
 	NSString *coopmap; // Half-Life co-op: the map to host, nil: not co-op
 	NSString *heading; // "Choose a game", or "Switch game" after one
+	NSString *cancel_title; // a button that picks nothing ("Cancel", "Close"), nil: none
+	void (^done)( int picked ); // told the pick (-2: cancelled), when shown over a game
 	CAShapeLayer *ring; // fills while a card with options is held
 	BOOL held; // the hold opened the options: its touch up isn't a tap
 }
@@ -385,6 +388,17 @@ static BOOL IsAnniversaryData( NSString *root )
 
 	UIStackView *top = [[UIStackView alloc] initWithArrangedSubviews:@[title, build]];
 	top.alignment = UIStackViewAlignmentFirstBaseline;
+	top.spacing = 20;
+
+	if( cancel_title )
+	{
+		UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
+		[cancel setTitle:cancel_title forState:UIControlStateNormal];
+		cancel.titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
+		[cancel addTarget:self action:@selector( cancelTapped ) forControlEvents:UIControlEventTouchUpInside];
+		[cancel setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+		[top insertArrangedSubview:cancel atIndex:1];
+	}
 
 	UIStackView *page = [[UIStackView alloc] initWithArrangedSubviews:@[top, cards, bottom]];
 	page.axis = UILayoutConstraintAxisVertical;
@@ -426,6 +440,19 @@ static BOOL IsAnniversaryData( NSString *root )
 	}
 
 	return @"";
+}
+
+// a game picked (or -2: none, the cancel button)
+- (void)choose:(int)index
+{
+	chosen = index;
+	if( done )
+		done( index );
+}
+
+- (void)cancelTapped
+{
+	[self choose:-2];
 }
 
 - (void)refresh
@@ -498,7 +525,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	NSString *where = [root isEqualToString:docs] ? @"" :
 		[NSString stringWithFormat:@" (found in \"%@\")", [root lastPathComponent]];
 	footer.text = [NSString stringWithFormat:@"%@Tap a game to play. Long press Half-Life for co-op, or Multiplayer Modes to pick a mode.\nGame files go in Files › On My %@ › %@%@.",
-		heading ? @"Pick the next game: the app closes, then tap its notification (or the app) to start it.\n" : @"",
+		heading ? @"Pick the next game: the one running ends (unsaved progress is lost) and the app closes; tap its notification (or the app) to start the next.\n" : @"",
 		[UIDevice currentDevice].model,
 		[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"this app", where];
 
@@ -594,7 +621,7 @@ static BOOL IsAnniversaryData( NSString *root )
 	// a game): the rest is a long press
 	if( state == GAME_READY )
 	{
-		chosen = (int)card.tag;
+		[self choose:(int)card.tag];
 		return;
 	}
 
@@ -637,13 +664,13 @@ static BOOL IsAnniversaryData( NSString *root )
 		preferredStyle:UIAlertControllerStyleActionSheet];
 
 	[sheet addAction:[UIAlertAction actionWithTitle:@"Single player" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
-		chosen = index;
+		[self choose:index];
 	}]];
 	[sheet addAction:[UIAlertAction actionWithTitle:@"Co-op: host a chapter" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
 		[self pickCoopChapter:card];
 	}]];
 	[sheet addAction:[UIAlertAction actionWithTitle:@"Co-op: join a friend (Multiplayer › Internet/LAN game)" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
-		chosen = index;
+		[self choose:index];
 	}]];
 	[sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
 
@@ -670,7 +697,7 @@ static BOOL IsAnniversaryData( NSString *root )
 		[sheet addAction:[UIAlertAction actionWithTitle:@( coop_chapters[i].title ) style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
 			[coopmap release];
 			coopmap = [map retain];
-			chosen = index;
+			[self choose:index];
 		}]];
 	}
 
@@ -690,7 +717,7 @@ static BOOL IsAnniversaryData( NSString *root )
 		preferredStyle:UIAlertControllerStyleActionSheet];
 
 	[sheet addAction:[UIAlertAction actionWithTitle:@"Join a game" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) {
-		chosen = index;
+		[self choose:index];
 	}]];
 
 	for( int i = 0; i < (int)NUM_AG_MODES; i++ )
@@ -712,7 +739,7 @@ static BOOL IsAnniversaryData( NSString *root )
 
 			[agmode release];
 			agmode = [[NSString alloc] initWithFormat:@"mm_%s", m->name];
-			chosen = index;
+			[self choose:index];
 		}]];
 	}
 
@@ -791,18 +818,19 @@ static NSArray *ChosenArgs( XashLauncherController *menu )
 }
 
 // Shows the picker until a game is chosen: the controller, with its window
-static XashLauncherController *RunPicker( const char *docsdir, NSString *heading, UIWindow **out )
+static XashLauncherController *RunPicker( const char *docsdir, NSString *heading, NSString *cancel, UIWindow **out )
 {
 	UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	XashLauncherController *menu = [[XashLauncherController alloc] init];
 
 	menu->docs = [@( docsdir ) retain];
 	menu->heading = [heading retain];
+	menu->cancel_title = [cancel retain];
 	window.rootViewController = menu;
 	[window makeKeyAndVisible];
 
 	@autoreleasepool {
-		while( menu->chosen < 0 )
+		while( menu->chosen == -1 )
 			[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
 	}
 
@@ -869,7 +897,7 @@ char **IOS_RunLauncher( const char *docsdir, int *argc )
 		return MakeArgv( next, argc );
 	}
 
-	XashLauncherController *menu = RunPicker( docsdir, nil, &window );
+	XashLauncherController *menu = RunPicker( docsdir, nil, nil, &window );
 
 	// the engine reads its base directory from here, see FS_DetermineRootDirectory
 	setenv( "XASH3D_BASEDIR", [menu->root fileSystemRepresentation], 1 );
@@ -890,18 +918,67 @@ static void WaitFor( volatile BOOL *flag )
 		[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
 }
 
-void IOS_RunSwitch( const char *docsdir )
+// the pick, kept for the next launch of the app (see TakeNextGame)
+static NSString *next_title; // set: a game was picked in this run of the app
+
+static void SaveNextGame( XashLauncherController *menu )
 {
-	UIWindow *window;
-	XashLauncherController *menu = RunPicker( docsdir, @"Switch game", &window );
-	NSString *title = @( games[menu->chosen].title );
 	NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
-	UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
 
 	[d setObject:ChosenArgs( menu ) forKey:KEY_NEXT_ARGS];
 	[d setObject:menu->root forKey:KEY_NEXT_ROOT];
 	[d setDouble:[NSDate timeIntervalSinceReferenceDate] forKey:KEY_NEXT_TIME];
 	[d synchronize];
+
+	[next_title release];
+	next_title = [@( games[menu->chosen].title ) retain];
+}
+
+// GAMES during a game: the picker over it, the game paused behind. Cancel
+// goes back to it; a pick is kept and finished( 1 ) ends the game, after
+// which IOS_RunSwitch closes the app.
+void IOS_PresentSwitch( UIViewController *host, void (^finished)( int picked ))
+{
+	// __block: not retained by the block below, which the menu holds
+	__block XashLauncherController *menu = [[XashLauncherController alloc] init];
+	void (^told)( int ) = [finished copy];
+
+	menu->docs = [@( IOS_GetDocsDir( )) retain];
+	menu->heading = [@"Switch game" retain];
+	menu->cancel_title = [@"Cancel" retain];
+	menu.modalPresentationStyle = UIModalPresentationFullScreen;
+	menu->done = [^( int picked ) {
+		if( picked >= 0 )
+			SaveNextGame( menu );
+
+		[menu->done autorelease];
+		menu->done = nil; // once
+		[[NSNotificationCenter defaultCenter] removeObserver:menu];
+		[host dismissViewControllerAnimated:YES completion:nil];
+		told( picked >= 0 );
+		[told release];
+		[menu release];
+	} copy];
+
+	[host presentViewController:menu animated:YES completion:nil];
+}
+
+void IOS_RunSwitch( const char *docsdir )
+{
+	UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+	NSString *title;
+
+	// a game's own Quit: no pick yet, the game is gone; Close just closes
+	if( !next_title )
+	{
+		UIWindow *window;
+		XashLauncherController *menu = RunPicker( docsdir, @"Switch game", @"Close", &window );
+
+		if( menu->chosen < 0 )
+			exit( 0 );
+		SaveNextGame( menu );
+	}
+	title = next_title;
 
 	// a banner to tap, right after the app closes (iOS asks the first time)
 	[center requestAuthorizationWithOptions:UNAuthorizationOptionAlert | UNAuthorizationOptionSound
@@ -931,7 +1008,11 @@ void IOS_RunSwitch( const char *docsdir )
 		UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Open the app again to start %@", title]
 			message:@"The app closes now; your pick starts when you open it again (within 10 minutes)." preferredStyle:UIAlertControllerStyleAlert];
 		[alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^( UIAlertAction *a ) { switch_ok = YES; }]];
-		[menu presentViewController:alert animated:YES completion:nil];
+		// on a window of its own: the game's is gone by now
+		UIWindow *window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+		window.rootViewController = [[[UIViewController alloc] init] autorelease];
+		[window makeKeyAndVisible];
+		[window.rootViewController presentViewController:alert animated:YES completion:nil];
 		WaitFor( &switch_ok );
 	}
 

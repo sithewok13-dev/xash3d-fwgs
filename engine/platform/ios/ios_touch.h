@@ -45,7 +45,9 @@ enum
 	IOSTOUCH_ACT_CONSOLE,
 	IOSTOUCH_ACT_SHOWFPS,
 	IOSTOUCH_ACT_HIDEFPS,
-	IOSTOUCH_ACT_GAMES, // quit to the launcher's "Choose a game"
+	IOSTOUCH_ACT_GAMES, // end the game (a next one was picked, see IOS_PresentSwitch)
+	IOSTOUCH_ACT_PAUSE, // single player paused while "Switch game" is up...
+	IOSTOUCH_ACT_UNPAUSE, // ...and on again after its Cancel
 };
 
 // Once per engine frame. window is the SDL_Window; ingame says whether the

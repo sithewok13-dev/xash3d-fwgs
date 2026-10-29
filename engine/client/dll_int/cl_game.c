@@ -993,6 +993,23 @@ static void CL_DrawLoadingOrPaused( int tex )
 	height = iHeight;
 
 	SPR_AdjustSize( &x, &y, &width, &height );
+
+#if XASH_IOS
+	// a picture bigger than the screen (the 25th anniversary's loading
+	// screens) fits it, whole, rather than scaled up with the HUD
+	{
+		float fit = Q_min( refState.width / (float)iWidth, refState.height / (float)iHeight );
+
+		if( width > iWidth * fit )
+		{
+			width = iWidth * fit;
+			height = iHeight * fit;
+			x = ( refState.width - width ) / 2.0f;
+			y = ( refState.height - height ) / 2.0f;
+		}
+	}
+#endif
+
 	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
 	ref.dllFuncs.GL_SetRenderMode( kRenderTransTexture );
 	ref.dllFuncs.R_DrawStretchPic( x, y, width, height, 0, 0, 1, 1, tex );
