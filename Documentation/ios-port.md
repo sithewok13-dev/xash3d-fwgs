@@ -30,7 +30,9 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   RELOAD. Top row: NEXT WPN, LIGHT, PHOTO, QUICK SAVE and QUICK LOAD (hold 0.3 s), MENU.
 - **MENU:** tap opens the game menu. Hold 0.45 s for the tray: GYRO (hold for MODE and
   gyro SENS), SENS, FPS, CAMERA (hold for photo options), CHEAT, LEVEL, CONTROLS
-  (NORMAL or SWAP sides) and KEYS (console).
+  (NORMAL or SWAP sides) and KEYS (console). Under the tray, small and grey, the app's
+  version, e.g. `v1.0 (123)` (123 is the CI run that built it; a TestFlight build shows
+  its TestFlight build number instead), and the build's commit at the right.
 - **Cheat:** the tray's CHEAT, or type `sithewok` in the console. It gives god mode and
   all weapons. While it's on, hold JUMP still for noclip (double-tap JUMP to land), hold
   USE still for notarget, and the tray shows LEVEL. Single player only.

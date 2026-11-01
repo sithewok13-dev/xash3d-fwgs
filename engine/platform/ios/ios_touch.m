@@ -517,6 +517,7 @@ static void SaveGyro( void )
 	UIView *opacity_panel;       // OPACITY's slider, under the tray
 	UISlider *opacity_slider;
 	UILabel *tray_build;         // the build, under the tray
+	UILabel *tray_version;       // the app's version, under the middle of the tray
 	CAShapeLayer *run_chevrons, *run_link;
 	int run_lit;                 // what run_marker shows (-1: not yet set)
 	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
@@ -770,6 +771,24 @@ static CGFloat ButtonAlpha( int i, int on )
 	tray_build.hidden = YES;
 	[self addSubview:tray_build];
 
+	// the app's version from Info.plist, e.g. "v1.0 (123)": the build number
+	// only when it adds something. Just text: touches go past it.
+	NSString *short_ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+	NSString *build_ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"];
+	if( ![short_ver isKindOfClass:[NSString class]] )
+		short_ver = @"?";
+	NSString *version = [@"v" stringByAppendingString:short_ver];
+	if( [build_ver isKindOfClass:[NSString class]] && build_ver.length && ![build_ver isEqualToString:short_ver] )
+		version = [version stringByAppendingFormat:@" (%@)", build_ver];
+
+	tray_version = [[UILabel alloc] init];
+	tray_version.text = version;
+	tray_version.font = [UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightRegular];
+	tray_version.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+	tray_version.userInteractionEnabled = NO;
+	tray_version.hidden = YES;
+	[self addSubview:tray_version];
+
 	return self;
 }
 
@@ -1001,6 +1020,12 @@ static CGFloat ButtonAlpha( int i, int on )
 	tray_build.hidden = !tray_open || seq != SEQ_NONE || freezing;
 	[tray_build sizeToFit];
 	tray_build.center = CGPointMake( btn_pos[BTN_MENU].x - tray_build.bounds.size.width / 2 + 20,
+		top + IOSTOUCH_TRAY_DROP + 30 );
+
+	// the version, on the same line, centred under the tray's shown buttons
+	tray_version.hidden = tray_build.hidden;
+	[tray_version sizeToFit];
+	tray_version.center = CGPointMake( btn_pos[BTN_MENU].x - ( n - 1 ) * IOSTOUCH_TRAY_STEP / 2,
 		top + IOSTOUCH_TRAY_DROP + 30 );
 }
 
