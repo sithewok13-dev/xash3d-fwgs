@@ -2,19 +2,44 @@
 # libraries in one unsigned IPA. Signing and TestFlight are done by
 # Sithewok-apps/ios-pipeline (testflight-ipa.yml), which takes the IPA from the
 # ios-latest release (master) or from a run artifact (any branch).
+#
+# What a run publishes:
+#   - a push to master, or a manual run of master with "release" left empty:
+#     the IPA to the "ios-latest" prerelease, as always (deleted and made
+#     again). Pushes to ios/** branches only keep the IPA as a run artifact.
+#   - a manual run of master with "release" set to a tag such as ios-v0.1
+#     (gh workflow run ios-trilogy.yml --ref master -f release=ios-v0.1): a
+#     release for that tag, created at the commit being built, with
+#     Documentation/ios-release-notes.md from that commit as its text and the
+#     IPA attached, marked as the latest release. A version with a '-' in it
+#     (ios-v0.1-beta1) is a prerelease instead and isn't marked latest.
+#     ios-latest is left alone. The run stops before building if it isn't on
+#     master, the tag isn't ios-v<version>, the tag is already on another
+#     commit, or the notes have no "### What's in <tag>" line.
+#   Running it again for the same tag on the same commit updates that release.
 name: iOS (HL + OF + BS)
 
 on:
   push:
     branches: [ master, 'ios/**' ]
   workflow_dispatch:
+    inputs:
+      release:
+        description: >-
+          Publish this build as a release with this tag (for example ios-v0.1),
+          created at the commit being built. Leave empty to update ios-latest as usual.
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 concurrency:
-  group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  # Release runs for one tag go one at a time and are never cancelled (a
+  # newer one waits). Every other run keeps the per-branch group, where a
+  # newer push cancels the older run.
+  group: ${{ inputs.release != '' && format('ios-release-{0}', inputs.release) || format('ios-{0}', github.ref) }}
+  cancel-in-progress: ${{ inputs.release == '' }}
 
 jobs:
   ipa:
@@ -24,11 +49,48 @@ jobs:
       SDL_VERSION: 2.32.10
       HLSDK_REPO: https://github.com/FWGS/hlsdk-portable
       IPA_NAME: Xash3D-iOS-unsigned.ipa
+      # The tag a manual run was asked to release; empty for pushes and ordinary runs.
+      RELEASE_TAG: ${{ inputs.release }}
+      # Release title; the tag's version is added after it (ios-v0.1 -> "... v0.1").
+      RELEASE_TITLE: "Xash3D FWGS for iOS"
+      RELEASE_NOTES: Documentation/ios-release-notes.md
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         submodules: recursive
+
+    # Before the build: a release needs master, a usable tag and notes written for it.
+    - name: Check release tag and notes
+      if: env.RELEASE_TAG != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -e
+        if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+          echo "::error::Releases are made from master only (this run is on $GITHUB_REF)."
+          exit 1
+        fi
+        case "$RELEASE_TAG" in
+          ios-v*) ;;
+          *) echo "::error::Release tag \"$RELEASE_TAG\" should look like ios-v0.1 (ios-v<version>)."; exit 1 ;;
+        esac
+        if [ "$RELEASE_TAG" = "ios-latest" ] || ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
+          echo "::error::\"$RELEASE_TAG\" can't be a release tag."
+          exit 1
+        fi
+        # A tag already there must be on this commit, or the release's IPA and
+        # its tag's source would differ (publishing doesn't move a tag).
+        REFS=$(git ls-remote origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}")
+        TAGGED=$(echo "$REFS" | tail -n 1 | cut -f 1)
+        if [ -n "$TAGGED" ] && [ "$TAGGED" != "$GITHUB_SHA" ]; then
+          echo "::error::Tag $RELEASE_TAG is already on commit $TAGGED, not on $GITHUB_SHA (the commit this run builds). Pick a new tag."
+          exit 1
+        fi
+        if ! grep -qxF "### What's in ${RELEASE_TAG}" "$RELEASE_NOTES"; then
+          echo "::error file=$RELEASE_NOTES::No \"### What's in ${RELEASE_TAG}\" heading line. Update the release notes for ${RELEASE_TAG}, commit and push them, then run this again."
+          exit 1
+        fi
 
     - name: Cache SDL2.framework
       id: sdl-cache
@@ -68,11 +130,41 @@ jobs:
         name: Xash3D-iOS-unsigned-ipa
         path: artifacts/${{ env.IPA_NAME }}
 
+    # Pushes to master and ordinary manual runs; a release run leaves ios-latest alone.
     - name: Publish ios-latest release
-      if: github.ref == 'refs/heads/master'
+      if: github.ref == 'refs/heads/master' && env.RELEASE_TAG == ''
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
         gh release delete ios-latest --yes --cleanup-tag || true
         gh release create ios-latest "artifacts/$IPA_NAME" --prerelease \
           --title "iOS latest" --notes "Unsigned IPA from ${GITHUB_SHA::7}. Game data is not included."
+
+    # Release runs: the tag created at the commit this run built, the notes
+    # from that commit as the text, and a prerelease if the version has a '-'.
+    - name: Publish release for the tag
+      if: github.ref == 'refs/heads/master' && env.RELEASE_TAG != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -e
+        if ! grep -qxF "### What's in ${RELEASE_TAG}" "$RELEASE_NOTES"; then
+          echo "::error file=$RELEASE_NOTES::No \"### What's in ${RELEASE_TAG}\" heading line."
+          exit 1
+        fi
+        test -f "artifacts/$IPA_NAME" || { echo "::error::artifacts/$IPA_NAME wasn't built."; exit 1; }
+        VERSION=${RELEASE_TAG#ios-}
+        case "$VERSION" in
+          *-*) KIND="--prerelease --latest=false" ;;
+          *) KIND="--prerelease=false --latest" ;;
+        esac
+        TITLE="$RELEASE_TITLE $VERSION"
+        echo "Release \"$TITLE\" ($KIND) at $GITHUB_SHA"
+        if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+          # the same tag on the same commit (checked before the build): update it
+          gh release edit "$RELEASE_TAG" --title "$TITLE" --notes-file "$RELEASE_NOTES" $KIND
+          gh release upload "$RELEASE_TAG" "artifacts/$IPA_NAME" --clobber
+        else
+          gh release create "$RELEASE_TAG" "artifacts/$IPA_NAME" --target "$GITHUB_SHA" \
+            --title "$TITLE" --notes-file "$RELEASE_NOTES" $KIND
+        fi

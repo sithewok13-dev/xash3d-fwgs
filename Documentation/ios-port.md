@@ -1,62 +1,110 @@
 # iOS port: Half-Life, Opposing Force and Blue Shift
 
-One app (shown as "Half-Life", bundle ID `com.sithewok.xash3d`) with the engine and
-the game libraries for all three games. No game data is bundled.
+One app (shown as "Half-Life", bundle ID `com.sithewok.xash3d`, iOS 12 or newer) with
+the engine and the game libraries for all three games, plus experimental extras:
+Half-Life co-op, Counter-Strike and Multiplayer Modes. No game data is bundled. The
+IPA is `Xash3D-iOS-unsigned.ipa`. Releases and the player's guide:
+https://github.com/sithewok13-dev/xash3d-fwgs/releases (release text:
+[ios-release-notes.md](ios-release-notes.md)).
 
 ## Installing the game data
 
 1. On a computer with Steam, open `steamapps/common/Half-Life`.
-2. Copy the `valve` folder, and `gearbox` (Opposing Force) and/or `bshift` (Blue Shift)
-   if you own them, into the app's folder: Files › On My iPhone › Half-Life. AirDrop to
-   Files, iCloud Drive, a USB drive or Finder's file sharing all work. Copying the whole
-   `Half-Life` folder is fine too; the launcher finds the games one level down.
-3. Open the app. The launcher marks each game Ready or says which folder is missing.
-   Opposing Force and Blue Shift also need `valve`.
+2. Copy the `valve` folder, and `gearbox` (Opposing Force), `bshift` (Blue Shift) and
+   `cstrike` (Counter-Strike) if you own them, into the app's folder: Files › On My
+   iPhone › Half-Life. AirDrop to Files, iCloud Drive, a USB drive or Finder's file
+   sharing all work. Copying the whole `Half-Life` folder is fine too; the launcher
+   finds the games one level down. Multiplayer Modes also need the `ag` folder from the
+   free Adrenaline Gamer mod (AG 6.6 on ModDB, or OpenAG's full package).
+3. Open the app. The launcher ("Choose a game") marks each game Ready or says which
+   folder is missing. Opposing Force, Blue Shift, Counter-Strike and Multiplayer Modes
+   also need `valve`. Its first launch writes `Copy game folders here.txt` into the
+   folder.
 
 Xash3D FWGS supports data from after Steam's 25th anniversary update (2023); the
 launcher says when it sees it (by the `hldemo1` map), and its Uplink chapter then also
-shows in LEVEL. Not yet tried on a device with real data. Each game's server library is picked by name (`-dll @hl`, `@opfor`, `@bshift`),
-so a `liblist.gam` from any Steam release loads the right one.
+shows in LEVEL. Not yet tried on a device with real data. Each game's server library is
+picked by name (`-dll @hl`, `@opfor`, `@bshift`), so a `liblist.gam` from any Steam
+release loads the right one.
+
+Saves are in each game's `save` folder (e.g. `valve/save`). `engine.log`,
+`xash-trace.txt` and `xash-trace-previous.txt` are written to the app's folder.
+
+## Launcher
+
+- Tap a ready game to play it. Hold Half-Life (0.5 s) for co-op (host a chapter, up
+  to 4 players, or join), or Multiplayer Modes to pick a mode. Options: extra engine
+  command line.
+- One game per launch: GAMES in MENU's tray opens "Switch game"; picking one ends the
+  game (unsaved progress is lost) and closes the app, and the pick starts at the next
+  launch (its notification, or opening the app within 10 minutes). Cancel goes back
+  to the paused game.
+- The footer shows the addresses friends join this device at (Wi-Fi, Tailscale).
 
 ## Controls
 
 The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports:
 
 - **Move:** stick where the left thumb lands. It walks; push it up onto the `^^` marker
-  to run. Dead zone 0.30.
+  to run (or RUN in the tray: always run). Dead zone 0.30.
 - **Look:** drag anywhere else. A drag that starts on FIRE, ALT, DUCK, USE, JUMP or
   RELOAD also looks.
 - **Buttons:** FIRE with DUCK, USE and JUMP around it, plus ALT (secondary fire) and
-  RELOAD. Top row: NEXT WPN, LIGHT, PHOTO, QUICK SAVE and QUICK LOAD (hold 0.3 s), MENU.
-- **MENU:** tap opens the game menu. Hold 0.45 s for the tray: GYRO (hold for MODE and
-  gyro SENS), SENS, FPS, CAMERA (hold for photo options), CHEAT, LEVEL, CONTROLS
-  (NORMAL or SWAP sides) and KEYS (console). Under the tray, small and grey, the app's
-  version, e.g. `v1.0 (123)` (123 is the CI run that built it; a TestFlight build shows
-  its TestFlight build number instead), and the build's commit at the right.
-- **Cheat:** the tray's CHEAT, or type `sithewok` in the console. It gives god mode and
-  all weapons. While it's on, hold JUMP still for noclip (double-tap JUMP to land), hold
-  USE still for notarget, and the tray shows LEVEL. Single player only.
+  RELOAD. Top row: NEXT WPN, LIGHT (flashlight; Opposing Force's night vision), the
+  camera (middle), the cheat's λ (once CHEAT is on), QUICK SAVE and QUICK LOAD (hold
+  0.3 s), MENU.
+- **NEXT WPN:** tap = next weapon with ammo; a 10 pt slide opens the weapon wheel at
+  once; a 0.3 s hold opens it to tap. One slice per weapon (HUD icon, ammo; no ammo
+  faded), the bottom gap cancels, a haptic tick per slice, and a single player game
+  holds still while it's open.
+- **MENU:** tap opens the game menu. Hold 0.45 s for the tray: GYRO (tap OFF/on; hold
+  for MODE TOUCH/ALWAYS and gyro speed 1/1.5/2/3x, default 1.5x), SENS (0.5, 0.75, 1,
+  1.25, 1.5, 2x; hold for 1x), RUN, OPACITY (tap: a slider, 20-100% in 5% steps; hold:
+  100%), FPS, CAMERA (tap shows/hides the camera button; hold for CLEAN, HUD, HUD+BTNS,
+  SELFIES 1/3/5, FREEZE), CHEAT, LEVEL, CTRL (NORMAL or SWAP sides), KEYS (console)
+  and GAMES. Settings are remembered; the cheat starts off each launch. Under the tray,
+  small and grey, the app's version, e.g. `v1.0 (123)` (123 is the CI run that built
+  it; a TestFlight build shows its TestFlight build number instead), and the build's
+  commit at the right. TAPS (touch debugging marks) is off the tray: console `ios_taps`.
+- **Cheat:** the tray's CHEAT (shows the λ button and switches the cheat on; again,
+  hides it and switches it off), or type `sithewok` in the console. Hold λ 0.5 s to
+  switch it off or on; a tap does nothing. It gives god mode and all weapons. While
+  it's on, hold JUMP still for noclip (double-tap JUMP to land), hold USE still for
+  notarget (both end at each new level), and the tray shows LEVEL. Single player only.
 - **LEVEL** (while the cheat is on): tap for the list of the game's chapters, numbered,
   each with its title and its first map, the one being played ticked. The game holds
   still while it's open. Tap a chapter to start it (with the suit and all weapons); the
   X or a tap off the list closes it. Or hold LEVEL to count through the chapters, then
   let go to start one.
-- **PHOTO:**
+- **Camera:**
   - Tap for a photo.
   - Hold for selfies.
   - Slide sideways for a burst.
   - Slide down for Action Freeze, a free camera.
   - Slide up for a cinematic burst.
 
-  Photos go to Photos, or to Files › Screenshots if Photos access is off.
+  Photos go to Photos, or to Files › Screenshots if Photos access is off. Selfies and
+  Action Freeze are single player only.
 
 ## Building
 
 `.github/workflows/ios-trilogy.yml` runs `scripts/ios/build_trilogy.sh` on a GitHub
-macOS runner. It builds the engine, then hlsdk-portable `master` (valve), `opfor`
-(gearbox) and `bshift` (bshift) for iOS, and writes `artifacts/Xash3D-iOS-unsigned.ipa`.
-Pushes to `master` publish it as the `ios-latest` release for Sithewok-apps/ios-pipeline
-to sign; other branches keep it as a run artifact.
+macOS runner. It builds the engine, then FWGS hlsdk-portable `master` (valve), `opfor`
+(gearbox) and `bshift` (bshift) for iOS, and, as optional parts left out if they fail,
+the fork's (sithewok13-dev/hlsdk-portable) `ios-ag` (ag) and `ios-coop` (hlcoop in
+valve) and cs16-client with ReGameDLL_CS (cstrike). It writes
+`artifacts/Xash3D-iOS-unsigned.ipa`. Pushes to `master` publish it as the `ios-latest`
+prerelease for Sithewok-apps/ios-pipeline to sign; other branches keep it as a run
+artifact.
+
+Numbered releases: a manual run of master with `release=<tag>`
+(`gh workflow run ios-trilogy.yml --ref master -f release=ios-v0.1-beta1`, or the REST
+call `POST repos/sithewok13-dev/xash3d-fwgs/actions/workflows/ios-trilogy.yml/dispatches`
+with `ref` and `inputs[release]`). The tag must look like `ios-v*` and not already be on
+another commit, and `Documentation/ios-release-notes.md` must contain the exact line
+`### What's in <tag>`. The release is created at the built commit with those notes as
+its text; a `-` in the version makes a prerelease that isn't marked latest. A release
+run leaves `ios-latest` alone.
 
 The iOS code is in `engine/platform/ios` (launcher, touch overlay, cheats, photo mode).
 The engine hooks are small and marked `#if XASH_IOS`, in `engine/client/input/input.c`,
