@@ -12,7 +12,7 @@
   page. Keep each paragraph and list item on one line: a release page turns
   every line break into a visible one.
 -->
-**Xash3D FWGS for iOS v0.1-beta1**: an unofficial iPhone build of the Xash3D FWGS engine that plays *Half-Life*, *Half-Life: Opposing Force* and *Half-Life: Blue Shift*, with touch controls.
+**Xash3D FWGS for iOS v0.1-beta1**: an unofficial iPhone build of the Xash3D FWGS engine that plays *Half-Life*, *Half-Life: Opposing Force*, *Half-Life: Blue Shift* and, as an experimental extra, *Counter-Strike 1.6*, with touch controls.
 
 **You need your own copy of the games; no game files are included.** You copy the game folders from your Steam copy on a computer: Half-Life is needed for all of them, Opposing Force and Blue Shift are optional (each is its own purchase on Steam).
 

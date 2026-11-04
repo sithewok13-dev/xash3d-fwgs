@@ -1,4 +1,4 @@
-# iOS port: Half-Life, Opposing Force and Blue Shift
+# iOS port: Half-Life, Opposing Force, Blue Shift and Counter-Strike
 
 One app (shown as "Half-Life", bundle ID `com.sithewok.xash3d`, iOS 12 or newer) with
 the engine and the game libraries for all three games, plus experimental extras:
