@@ -16,6 +16,8 @@ https://github.com/sithewok13-dev/xash3d-fwgs/releases (release text:
    sharing all work. Copying the whole `Half-Life` folder is fine too; the launcher
    finds the games one level down. Multiplayer Modes also need the `ag` folder from the
    free Adrenaline Gamer mod (AG 6.6 on ModDB, or OpenAG's full package).
+   Counter-Strike's bots and Training need more of your own files, in `cstrike`:
+   see "Counter-Strike 1.6" below.
 3. Open the app. The launcher ("Choose a game") marks each game Ready or says which
    folder is missing. Opposing Force, Blue Shift, Counter-Strike and Multiplayer Modes
    also need `valve`. Its first launch writes `Copy game folders here.txt` into the
@@ -184,6 +186,33 @@ which a separate app would make you copy twice. Open-source client for
 this engine (cs16-client, used on Android) and server (ReGameDLL_CS);
 data from your Steam copy (cstrike). Its own touch layout: buy menu,
 team/class choice, scoreboard; plant and defuse on USE; no LIGHT.
+
+The IPA ships only cs16-client's own touch layouts, icons and settings, as
+`cstrike/extras.pk3`, built by `build_trilogy.sh` from parts of
+`3rdparty/cs16client-extras`. cs16-client's full extras.pk3 is not shipped: it
+also holds Valve's files (training maps, bot databases and voices,
+Counter-Strike's menu art and text, launcher sounds) and YaPB's files (YaPB
+isn't built). Counter-Strike's menus use the engine's own menu art
+(`valve/extras.pk3`) instead. Players copy the rest from their own games into
+their `cstrike` folder, which the engine searches after the app's own
+`cstrike` (`FS_AddGameHierarchy`: the read-only app folder, then Documents):
+
+- Bots (ReGameDLL_CS, allowed on a listen server by `UTIL_AreBotsAllowed`):
+  `BotProfile.db` (loaded with the engine's `LOAD_FILE_FOR_ME`; without it
+  `bot_add` finds no profile and no bot joins), `BotChatter.db` (without it
+  bots don't talk) and `sound/radio/bot/*.wav` (a chatter line is only used
+  if its file exists). From Counter-Strike: Condition Zero's `czero` folder,
+  or a Counter-Strike copy that has them (ReGameDLL_CS's README describes
+  adding them to CS 1.6).
+- Training: the menu starts the `trainmap` named in the player's own
+  `cstrike/liblist.gam`; it needs the maps `tr_1`, `tr_1a`, `tr_2`, `tr_3`
+  and `sound/training`. Steam's copy may not have them.
+
+`scripts/ios/check_no_game_data.py` runs in `ios-trilogy.yml` before the IPA
+is uploaded or published: it opens the IPA and every .pk3/.zip in it and fails
+on maps, sounds, models, sprites, WADs, PAKs or `.db` files, on any archive
+other than `valve/extras.pk3` and `cstrike/extras.pk3`, and on anything in
+`cstrike/extras.pk3` outside its touch and settings folders.
 
 ### Team Fortress Classic
 

@@ -124,6 +124,11 @@ jobs:
           unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/$d/cl_dlls/" || { echo "missing $d client library"; exit 1; }
         done
 
+    # Before anything leaves the runner (the run artifact, ios-latest and the
+    # release): the IPA must carry no game data, inside its .pk3 files too.
+    - name: Check IPA has no game data
+      run: python3 -I scripts/ios/check_no_game_data.py "artifacts/$IPA_NAME"
+
     - name: Upload IPA (artifact)
       uses: actions/upload-artifact@v4
       with:

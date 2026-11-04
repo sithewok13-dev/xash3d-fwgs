@@ -101,9 +101,17 @@ done
 
 # Counter-Strike 1.6 (optional, as above): cs16-client's client, its own
 # menus (fonts by stb_truetype, as on Android: no FreeType for iOS here) and
-# ReGameDLL_CS server (with the game's own bots), in "cstrike", plus
-# cs16-client's own extras.pk3 (its menus' art and settings, not game data). It has no iOS
-# naming of its own, so its libraries are renamed to <name>_ios_arm64.dylib.
+# ReGameDLL_CS server (with the game's own bots), in "cstrike", plus an
+# extras.pk3 of cs16-client's own touch layouts, icons and settings. It has no
+# iOS naming of its own, so its libraries are renamed to <name>_ios_arm64.dylib.
+#
+# cs16-client's own extras.pk3 is NOT shipped: besides those files it carries
+# Valve's game files (Counter-Strike's training maps tr_1, tr_1a, tr_2, tr_3
+# and sound/training, the bots' BotProfile.db, BotChatter.db and
+# sound/radio/bot voices, Counter-Strike's menu art gfx/shell and the launcher
+# sounds in media) and YaPB's files (YaPB isn't built here). Players copy
+# those from their own games; the IPA must hold no game data, and
+# scripts/ios/check_no_game_data.py fails the build if it does.
 CS16_REPO=${CS16_REPO-https://github.com/Velaron/cs16-client}
 build_cs16() {
 	cssrc="$ROOT/build/cs16-client"
@@ -131,7 +139,7 @@ build_cs16() {
 		-DCMAKE_INSTALL_PREFIX="$staged" || return 1
 	# just the client, the menus and the server (its bots included): not
 	# YaPB, the separate bot add-on, nor the install step that would want it
-	if ! cmake --build "$cssrc/build" --target client menu regamedll generate_extras -j"$(sysctl -n hw.ncpu)" > "$cssrc/build.log" 2>&1; then
+	if ! cmake --build "$cssrc/build" --target client menu regamedll -j"$(sysctl -n hw.ncpu)" > "$cssrc/build.log" 2>&1; then
 		echo "cs16-client errors:"
 		grep -E "error|Error" "$cssrc/build.log" | grep -v "warning" | head -40
 		return 1
@@ -139,7 +147,25 @@ build_cs16() {
 	mkdir -p "$staged/cstrike/cl_dlls" "$staged/cstrike/dlls"
 	find "$cssrc/build" -name 'client*.dylib' -exec cp {} "$staged/cstrike/cl_dlls/" \;
 	find "$cssrc/build" -name 'menu*.dylib' -exec cp {} "$staged/cstrike/cl_dlls/" \;
-	cp "$cssrc/build/extras.pk3" "$staged/cstrike/" || return 1
+	# only these parts of 3rdparty/cs16client-extras, never the rest
+	python3 - "$cssrc/3rdparty/cs16client-extras" "$staged/cstrike/extras.pk3" <<'PY' || return 1
+import os, sys, zipfile
+src, out = sys.argv[1], sys.argv[2]
+keep = ("touch/", "touch_default/", "touch_presets/", "userconfig.d/", "touch.cfg")
+banned = (".bsp", ".wav", ".mp3", ".mdl", ".spr", ".wad", ".db", ".pak")
+n = 0
+with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:
+    for d, dirs, files in os.walk(src):
+        dirs.sort()
+        for f in sorted(files):
+            path = os.path.join(d, f)
+            name = os.path.relpath(path, src).replace(os.sep, "/")
+            if name.startswith(keep) and not name.lower().endswith(banned):
+                z.write(path, name)
+                n += 1
+print(f"cstrike/extras.pk3: {n} files of cs16-client's own")
+sys.exit(0 if n else 1)
+PY
 	find "$cssrc/build" -name 'cs*.dylib' -path '*regamedll*' -exec cp {} "$staged/cstrike/dlls/" \;
 	find "$staged" -name '*.dylib' | while read -r lib; do
 		base=$(basename "$lib" .dylib)

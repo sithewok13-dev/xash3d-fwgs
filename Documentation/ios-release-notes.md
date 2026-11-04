@@ -128,7 +128,9 @@ These have had the least testing of anything in the app.
 
 - **Half-Life co-op**, up to 4 players through the campaign: on *Choose a game*, **hold** the Half-Life card for half a second, then pick *Co-op: host a chapter* (and a chapter) or *Co-op: join a friend*. Whoever reaches a level change takes everyone along, and a fallen player comes back next to a teammate. Co-op games can't be saved: host again from the chapter you reached.
 - **Multiplayer Modes:** Deathmatch, Team Deathmatch, Arena, Last Man Standing, Instagib, Gun Game, Low Gravity, Crowbars Only, Snarks Only, Rockets Only, Capture the Flag and Domination. They need the `ag` folder from the free *Adrenaline Gamer* mod (AG 6.6 on ModDB, or OpenAG's full package at openag.pro). Hold the *Multiplayer Modes* card to pick a mode, then *Multiplayer › Create game* to host it.
-- **Counter-Strike:** with your own Steam copy of Counter-Strike (its `cstrike` folder), using the open-source cs16-client and ReGameDLL_CS, with the game's own bots.
+- **Counter-Strike:** with your own Steam copy of Counter-Strike (its `cstrike` folder), using the open-source cs16-client and ReGameDLL_CS, with the game's own bots. The app doesn't include any of the bots' or Training's files: copy them from your own games into your `cstrike` folder.
+  - **Bots** need `BotProfile.db`, `BotChatter.db` and the folder `sound › radio › bot`, from your own *Counter-Strike: Condition Zero* (its `czero` folder) or a Counter-Strike copy that already has them. Without `BotProfile.db` no bots join; without the other two they play but don't talk.
+  - **Training** needs the maps `tr_1.bsp`, `tr_1a.bsp`, `tr_2.bsp` and `tr_3.bsp` (in `cstrike › maps`) and the folder `sound › training`. Steam's Counter-Strike may not have them; without them Training can't start.
 - **Joining:** the *Choose a game* screen shows the addresses friends join you at: your Wi-Fi address and, if Tailscale is running, your Tailscale address (for playing over the internet). In the game, use *Multiplayer › Internet/LAN game*, or add the server by its address. iOS asks once for **Local Network** access: allow it, to host or join. The screen stays on while you host: if the host's phone locks or leaves the app, the game freezes for everyone.
 
 #### Menus, switching games and the console
@@ -146,6 +148,7 @@ These have had the least testing of anything in the app.
 
 - **Beta, tested on one iPhone only:** the app has been played on the owner's own iPhone. Nothing else has been tried: no iPad (the app is marked for iPad, but has never been installed on one), no other iPhone models or iOS versions, no game controllers, keyboards or mice.
 - **The experimental extras** (co-op, Multiplayer Modes, Counter-Strike, playing with friends over Wi-Fi or Tailscale) have had much less testing than single player. If something goes wrong, please report it (see *Found a bug?*).
+- **Counter-Strike's bots and Training** need files from your own games (see *Counter-Strike* under *Playing with friends*). Copying them in hasn't been tried with this version yet.
 - **Finding games on your Wi-Fi by itself may not work**, because iOS limits broadcasts for apps installed this way: join by address instead.
 - **Game data:** only Steam copies are expected to work. The *Choose a game* screen notices Steam's 25th anniversary update data (2023) and then adds its *Uplink* chapter to LEVEL. Other editions (old CDs, non-English versions) haven't been tried.
 - **Leaving the app doesn't save your game.** Quick save first.
@@ -166,7 +169,7 @@ These have had the least testing of anything in the app.
    - `valve`: Half-Life, needed by all the others;
    - `gearbox`: Opposing Force (optional);
    - `bshift`: Blue Shift (optional);
-   - `cstrike`: Counter-Strike (optional, experimental).
+   - `cstrike`: Counter-Strike (optional, experimental; for bots and Training, see *Counter-Strike* under *Playing with friends*).
 5. Copy the folders you want into **On My iPhone › Half-Life** in the Files app, as they are (not zipped), next to *Copy game folders here.txt*. Copying the whole `Half-Life` folder there works too. Any way into the Files app is fine, for example iCloud Drive: copy them into iCloud Drive on your computer, then move them into the app's folder in the Files app. A big folder takes a while to copy: wait until it has finished.
 6. **Open the app again**, or go back to it: *Choose a game* updates by itself and shows **Ready** for each game it found. Opposing Force and Blue Shift also need `valve`; a game that's missing something says what, and a tap on it explains.
 
