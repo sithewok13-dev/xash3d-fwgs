@@ -127,6 +127,7 @@ extern const char *g_buildcommit;
 #define KEY_GYRO_SENS @"iosTouchGyroSens"
 #define KEY_LOOK_SENS @"iosTouchLookSens"
 #define KEY_SHOW_FPS  @"iosTouchShowFps"
+#define KEY_MAX_FPS   @"iosTouchMaxFps" // 60 or 120
 #define KEY_SHOW_TAPS @"iosTouchShowTaps"
 #define KEY_ALWAYS_RUN @"iosTouchAlwaysRun"
 #define KEY_SWAPPED   @"iosTouchSwapped"
@@ -225,7 +226,7 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_TRAY_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_RUN]  = { "RUN",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_OPACITY] = { "OPACITY",   KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
-[BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY },
+[BTN_TRAY_FPS]  = { "FPS",          KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_TAPS] = { "TAPS",         KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_CAM]  = { "CAMERA",       KIND_TRAY,    0,                      20, 0, ROW_TRAY, IOSTOUCH_MENU_HOLD },
 [BTN_TRAY_CHEAT] = { "CHEAT",       KIND_TRAY,    0,                      20, 0, ROW_TRAY },
@@ -266,6 +267,8 @@ static int gyro_smooth_next;
 static int gyro_mode = GYRO_OFF, gyro_last_mode = GYRO_TOUCH, gyro_sens_i = 1;
 #define LOOK_SENS_DEFAULT 2 // 1x
 static int look_sens_i = LOOK_SENS_DEFAULT;
+static int max_fps = 60; // FPS held: 60 or 120 frames a second
+static void ApplyMaxFps( void );
 static int show_fps, show_taps, always_run, swapped, show_cheat, cheat_on;
 static int level_counting, level_index;
 static int show_camera = 1, camera_kinds = IOSTOUCH_PHOTO_CLEAN, selfie_shots = 3, freeze_on = 1, cam_row_open;
@@ -458,6 +461,7 @@ static void LoadSettings( void )
 	}
 
 	show_fps = (int)[d boolForKey:KEY_SHOW_FPS];
+	max_fps = [d integerForKey:KEY_MAX_FPS] == 120 ? 120 : 60;
 	show_taps = (int)[d boolForKey:KEY_SHOW_TAPS];
 	always_run = (int)[d boolForKey:KEY_ALWAYS_RUN];
 	show_cheat = (int)[d boolForKey:KEY_SHOW_CHEAT];
@@ -831,6 +835,7 @@ static CGFloat ButtonAlpha( int i, int on )
 
 	btn_lit[BTN_TRAY_GYRO] = gyro_mode != GYRO_OFF;
 	btn_lit[BTN_TRAY_FPS] = show_fps;
+	btn_labels[BTN_TRAY_FPS].text = [NSString stringWithFormat:@"FPS\n%d", max_fps];
 	btn_lit[BTN_TRAY_TAPS] = show_taps;
 	btn_lit[BTN_TRAY_RUN] = always_run;
 	btn_lit[BTN_TRAY_CTRL] = swapped;
@@ -2634,6 +2639,14 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			[self showToast:@"Controls back to full strength"];
 			[self updateLabels];
 			break;
+		case BTN_TRAY_FPS:
+			// held: 60 or 120 frames a second (the lift then does nothing)
+			max_fps = max_fps == 120 ? 60 : 120;
+			[[NSUserDefaults standardUserDefaults] setInteger:max_fps forKey:KEY_MAX_FPS];
+			ApplyMaxFps( );
+			[self showToast:max_fps == 120 ? @"120 FPS: smoother, uses more battery" : @"60 FPS: cooler, uses less battery"];
+			[self updateLabels];
+			break;
 		case BTN_TRAY_SENS:
 			// held: back to the default
 			look_sens_i = LOOK_SENS_DEFAULT;
@@ -2810,6 +2823,82 @@ void IOSTouch_SetShowTaps( int on )
 
 static UIWindow *probed; // the window IOSTapProbe watches
 
+void Sys_PrintLog( const char *msg ); // engine.log (common/system.h)
+
+// The screen's refresh rate asked for: 60, or 120 on ProMotion screens
+// (Info.plist's CADisableMinimumFrameDurationOnPhone lets an iPhone ask
+// more than 60). The engine's fps_max follows it (IOSTouch_MaxFps), and
+// with vsync the frames follow the screen.
+@interface IOSFrameRate : NSObject
+{
+@public
+	CADisplayLink *link;
+	CFTimeInterval start;
+	int ticks;
+}
+- (void)tick:(CADisplayLink *)l;
+@end
+
+@implementation IOSFrameRate
+// (for the log: the rate the screen really runs at, once after each change)
+- (void)tick:(CADisplayLink *)l
+{
+	if( start == 0.0 )
+	{
+		start = l.timestamp;
+		return;
+	}
+	if( ticks < 0 )
+		return;
+	ticks++;
+	if( l.timestamp - start >= 5.0 )
+	{
+		char line[128];
+		snprintf( line, sizeof( line ), "iOS: the screen runs at %.0f Hz\n", ticks / ( l.timestamp - start ));
+		Sys_PrintLog( line );
+		ticks = -1;
+	}
+}
+@end
+
+static IOSFrameRate *frame_rate;
+
+static void ApplyMaxFps( void )
+{
+	char line[160];
+
+	if( !frame_rate )
+	{
+		frame_rate = [[IOSFrameRate alloc] init];
+		frame_rate->link = [[CADisplayLink displayLinkWithTarget:frame_rate selector:@selector(tick:)] retain];
+		[frame_rate->link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+	}
+
+	if( @available( iOS 15.0, * ))
+		frame_rate->link.preferredFrameRateRange = CAFrameRateRangeMake( max_fps == 120 ? 80.0f : 60.0f, max_fps, max_fps );
+	else
+		frame_rate->link.preferredFramesPerSecond = max_fps;
+
+	snprintf( line, sizeof( line ), "iOS: asked the screen for %d Hz (it can do %ld; Low Power Mode %s)\n", max_fps,
+		(long)[UIScreen mainScreen].maximumFramesPerSecond, [NSProcessInfo processInfo].lowPowerModeEnabled ? "on: 60 at most" : "off" );
+	Sys_PrintLog( line );
+	frame_rate->start = 0.0;
+	frame_rate->ticks = 0;
+}
+
+int IOSTouch_MaxFps( void )
+{
+	static int loaded;
+
+	// (before the overlay's first frame too: the engine asks from the start)
+	if( !loaded )
+	{
+		max_fps = [[NSUserDefaults standardUserDefaults] integerForKey:KEY_MAX_FPS] == 120 ? 120 : 60;
+		loaded = 1;
+	}
+	return max_fps;
+}
+
 static UIView *HostView( void *window )
 {
 	SDL_SysWMinfo info;
@@ -2880,6 +2969,7 @@ void IOSTouch_Frame( void *window, int ingame )
 		if( !overlay )
 		{
 			LoadSettings();
+			ApplyMaxFps( );
 			motion = [[CMMotionManager alloc] init];
 			motion_queue = [[NSOperationQueue alloc] init];
 			motion_queue.maxConcurrentOperationCount = 1;

@@ -110,6 +110,17 @@ void IOS_TouchFrame( void )
 
 	IOS_CheatFrame( );
 	IOSTouch_Frame( host.hWnd, ingame );
+
+	// fps_max follows MENU's tray FPS (60 or 120), whatever a config says
+	{
+		int fps = IOSTouch_MaxFps( );
+
+		if( host_maxfps.value != fps )
+		{
+			Cvar_DirectSetValue( &host_maxfps, fps );
+			Con_Printf( "iOS: fps_max %d (MENU's tray: hold FPS for 60 or 120)\n", fps );
+		}
+	}
 	// a game running (not the menu's background map), or hosting one, menus
 	// over it included
 	IOSTouch_KeepAwake(( cls.state == ca_active && !cl.background ) || ( SV_Active( ) && SV_GetMaxClients( ) > 1 ));

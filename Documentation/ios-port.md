@@ -62,7 +62,8 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
 - **MENU:** tap opens the game menu. Hold 0.45 s for the tray: GYRO (tap OFF/on; hold
   for MODE TOUCH/ALWAYS and gyro speed 1/1.5/2/3x, default 1.5x), SENS (0.5, 0.75, 1,
   1.25, 1.5, 2x; hold for 1x), RUN, OPACITY (tap: a slider, 20-100% in 5% steps; hold:
-  100%), FPS, CAMERA (tap shows/hides the camera button; hold for CLEAN, HUD, HUD+BTNS,
+  100%), FPS (tap shows/hides the counter; hold 0.45 s to switch 60 <-> 120 frames a
+  second, default 60: the screen is asked for that rate and fps_max follows it), CAMERA (tap shows/hides the camera button; hold for CLEAN, HUD, HUD+BTNS,
   SELFIES 1/3/5, FREEZE), CHEAT, LEVEL, CTRL (NORMAL or SWAP sides), KEYS (console)
   and GAMES. Settings are remembered; the cheat starts off each launch. Under the tray,
   small and grey, the app's version, e.g. `v1.0 (123)` (123 is the CI run that built

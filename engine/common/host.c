@@ -520,7 +520,12 @@ static double Host_CalcFPS( void )
 	{
 		// vsync is expected to limit the framerate, but some drivers
 		// ignore it, so never let the game run completely unlimited
+#if XASH_IOS
+		// iOS: fps_max always (60 or 120, MENU's tray FPS), vsync or not
+		fps = host_maxfps.value;
+#else
 		fps = gl_vsync.value ? MAX_FPS_HARD : host_maxfps.value;
+#endif
 	}
 	else if( !SV_Active() && CL_Protocol() == PROTO_GOLDSRC && cls.state != ca_disconnected && cls.state < ca_validate )
 	{
@@ -530,7 +535,11 @@ static double Host_CalcFPS( void )
 	{
 		const double max_fps = fps_override.value ? MAX_FPS_HARD : MAX_FPS_SOFT;
 
+#if XASH_IOS
+		if( 0 ) // iOS: fps_max always, see above
+#else
 		if( gl_vsync.value )
+#endif
 			fps = max_fps;
 		else
 		{

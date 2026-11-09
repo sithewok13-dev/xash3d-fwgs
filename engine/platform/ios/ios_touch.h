@@ -72,6 +72,10 @@ void IOSTouch_KeepAwake( int on );
 // The console word "sithewok": switches the cheat, and shows its button
 void IOSTouch_ToggleCheat( void );
 
+// MENU's tray FPS held: 60 or 120 frames a second (remembered, 60 at first);
+// the engine's fps_max follows it
+int IOSTouch_MaxFps( void );
+
 // TAPS: the touch debugging marks are on (console: ios_taps 0/1)
 int IOSTouch_ShowTaps( void );
 void IOSTouch_SetShowTaps( int on );

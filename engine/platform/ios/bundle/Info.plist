@@ -58,6 +58,9 @@
 	<string>Motion data is used for optional gyro aiming.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone permissions are required for voice chat</string>
+	<!-- lets iPhones with ProMotion run at 120 Hz (MENU's tray FPS held) -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIDeviceFamily</key>
