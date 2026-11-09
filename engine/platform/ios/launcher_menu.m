@@ -29,8 +29,26 @@ GNU General Public License for more details.
 #include <arpa/inet.h>
 #include "launcher_menu.h"
 
-extern const char *g_buildcommit;
 const char *IOS_GetDocsDir( void );
+
+NSString *IOS_BuildStamp( void )
+{
+	static const char *const months[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
+	id num = [info objectForKey:@"SWBuildNumber"];
+	id date = [info objectForKey:@"SWBuildDate"];
+	int y = 0, m = 0, d = 0;
+
+	if( [num isKindOfClass:[NSNumber class]] )
+		num = [num stringValue];
+	if( ![num isKindOfClass:[NSString class]] || ![num length] )
+		return @"build dev";
+	if( [date isKindOfClass:[NSString class]] && sscanf( [date UTF8String], "%d-%d-%d", &y, &m, &d ) == 3
+		&& m >= 1 && m <= 12 && d >= 1 && d <= 31 )
+		return [NSString stringWithFormat:@"build %@ \u00B7 %s %d", num, months[m - 1], d];
+	return [NSString stringWithFormat:@"build %@", num];
+}
 
 typedef struct launcher_game_s
 {
@@ -381,7 +399,7 @@ static BOOL IsAnniversaryData( NSString *root )
 
 	// which build this is, to tell builds apart when testing
 	UILabel *build = [[UILabel alloc] init];
-	build.text = [NSString stringWithFormat:@"build %s", g_buildcommit];
+	build.text = IOS_BuildStamp();
 	build.textColor = [UIColor colorWithWhite:0.45 alpha:1.0];
 	build.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightRegular];
 	[build setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];

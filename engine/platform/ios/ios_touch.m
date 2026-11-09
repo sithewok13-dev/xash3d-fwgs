@@ -34,8 +34,6 @@ GNU General Public License for more details.
 #include "ios_touch.h"
 #include "launcher_menu.h"
 
-extern const char *g_buildcommit;
-
 // Look speed: degrees of view turn per point of finger travel (the same turn
 // as the Jedi Knight port at its default mouse settings), times SENS
 #define IOSTOUCH_LOOK_DEG_X 0.64f
@@ -520,8 +518,7 @@ static void SaveGyro( void )
 	UIView *stick_ring, *stick_knob, *run_marker;
 	UIView *opacity_panel;       // OPACITY's slider, under the tray
 	UISlider *opacity_slider;
-	UILabel *tray_build;         // the build, under the tray
-	UILabel *tray_version;       // the app's version, under the middle of the tray
+	UILabel *tray_version;       // the build stamp, under the middle of the tray
 	CAShapeLayer *run_chevrons, *run_link;
 	int run_lit;                 // what run_marker shows (-1: not yet set)
 	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
@@ -768,26 +765,10 @@ static CGFloat ButtonAlpha( int i, int on )
 	[opacity_panel addSubview:opacity_slider];
 	[self addSubview:opacity_panel];
 
-	tray_build = [[UILabel alloc] init];
-	tray_build.text = [NSString stringWithFormat:@"build %s", g_buildcommit];
-	tray_build.font = [UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightRegular];
-	tray_build.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
-	tray_build.hidden = YES;
-	[self addSubview:tray_build];
-
-	// the app's version from Info.plist, e.g. "v1.0 (123)": the build number
-	// only when it adds something. Just text: touches go past it.
-	NSString *short_ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-	NSString *build_ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"];
-	if( ![short_ver isKindOfClass:[NSString class]] )
-		short_ver = @"?";
-	NSString *version = [@"v" stringByAppendingString:short_ver];
-	if( [build_ver isKindOfClass:[NSString class]] && build_ver.length && ![build_ver isEqualToString:short_ver] )
-		version = [version stringByAppendingFormat:@" (%@)", build_ver];
-
+	// the build stamp, "build 80 · Nov 9". Just text: touches go past it.
 	tray_version = [[UILabel alloc] init];
-	tray_version.text = version;
-	tray_version.font = [UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightRegular];
+	tray_version.text = IOS_BuildStamp();
+	tray_version.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightRegular];
 	tray_version.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
 	tray_version.userInteractionEnabled = NO;
 	tray_version.hidden = YES;
@@ -1021,14 +1002,8 @@ static CGFloat ButtonAlpha( int i, int on )
 		opacity_slider.value = ctrl_opacity;
 	}
 
-	// the build, right under the tray's end (under MENU)
-	tray_build.hidden = !tray_open || seq != SEQ_NONE || freezing;
-	[tray_build sizeToFit];
-	tray_build.center = CGPointMake( btn_pos[BTN_MENU].x - tray_build.bounds.size.width / 2 + 20,
-		top + IOSTOUCH_TRAY_DROP + 30 );
-
-	// the version, on the same line, centred under the tray's shown buttons
-	tray_version.hidden = tray_build.hidden;
+	// the build stamp, centred under the tray's shown buttons
+	tray_version.hidden = !tray_open || seq != SEQ_NONE || freezing;
 	[tray_version sizeToFit];
 	tray_version.center = CGPointMake( btn_pos[BTN_MENU].x - ( n - 1 ) * IOSTOUCH_TRAY_STEP / 2,
 		top + IOSTOUCH_TRAY_DROP + 30 );

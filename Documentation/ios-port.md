@@ -66,9 +66,8 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   second, default 60: the screen is asked for that rate and fps_max follows it), CAMERA (tap shows/hides the camera button; hold for CLEAN, HUD, HUD+BTNS,
   SELFIES 1/3/5, FREEZE), CHEAT, LEVEL, CTRL (NORMAL or SWAP sides), KEYS (console)
   and GAMES. Settings are remembered; the cheat starts off each launch. Under the tray,
-  small and grey, the app's version, e.g. `v1.0 (123)` (123 is the CI run that built
-  it; a TestFlight build shows its TestFlight build number instead), and the build's
-  commit at the right. TAPS (touch debugging marks) is off the tray: console `ios_taps`.
+  small and grey, the build stamp, e.g. `build 123 · Nov 9` (the CI run that built it
+  and its date, UTC; `build dev` for a local build), also on the game picker. TAPS (touch debugging marks) is off the tray: console `ios_taps`.
 - **Cheat:** the tray's CHEAT (shows the λ button and switches the cheat on; again,
   hides it and switches it off), or type `sithewok` in the console. Hold λ 0.5 s to
   switch it off or on; a tap does nothing. It gives god mode and all weapons. While

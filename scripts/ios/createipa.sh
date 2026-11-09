@@ -12,10 +12,13 @@ if [ -d "$BUILDDIR" ]; then
 
     cp -r "$BUILDDIR/ios/libs/"* "$BUILDDIR/ios/xash3d.app"
     cp Info.plist "$BUILDDIR/ios/xash3d.app"
-    # on CI, the build number is the run number, so the app (MENU's tray)
-    # shows which build it is, e.g. "v1.0 (123)"
+    # on CI, the build number is the run number, and the build stamp the app
+    # shows (MENU's tray, the launcher) is that and today's date (UTC):
+    # "build 123 · Nov 9". Local builds have no stamp: "build dev".
     if [ -n "$GITHUB_RUN_NUMBER" ]; then
         plutil -replace CFBundleVersion -string "$GITHUB_RUN_NUMBER" "$BUILDDIR/ios/xash3d.app/Info.plist"
+        plutil -replace SWBuildNumber -string "$GITHUB_RUN_NUMBER" "$BUILDDIR/ios/xash3d.app/Info.plist"
+        plutil -replace SWBuildDate -string "$(date -u +%F)" "$BUILDDIR/ios/xash3d.app/Info.plist"
     fi
     if [ ! -d "$BUILDDIR/SDL2.framework" ]; then
         echo "Couldn't find SDL2.framework, place it in the build directory"

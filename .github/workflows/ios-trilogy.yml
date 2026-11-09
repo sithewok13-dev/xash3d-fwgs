@@ -242,6 +242,19 @@ jobs:
     - name: Build IPA
       run: ANGLE_ROOT="$GITHUB_WORKSPACE/angle-prebuilt" bash scripts/ios/build_trilogy.sh
 
+    # "Build <run> · <date>", the first line of the release text, with the
+    # date the app was stamped with (scripts/ios/createipa.sh)
+    - name: Build stamp
+      run: |
+        set -e
+        DATE=$(python3 -I - "artifacts/$IPA_NAME" <<'PY'
+        import plistlib, sys, zipfile
+        z = zipfile.ZipFile(sys.argv[1])
+        print(plistlib.loads(z.read("Payload/xash3d.app/Info.plist"))["SWBuildDate"])
+        PY
+        )
+        echo "BUILD_STAMP=Build $GITHUB_RUN_NUMBER · $DATE" | tee -a "$GITHUB_ENV"
+
     - name: Check IPA contents
       run: |
         unzip -l "artifacts/$IPA_NAME" | grep -E '\.dylib$|/xash$'
@@ -273,7 +286,8 @@ jobs:
       run: |
         gh release delete ios-latest --yes --cleanup-tag || true
         gh release create ios-latest "artifacts/$IPA_NAME" --prerelease \
-          --title "iOS latest" --notes "Unsigned IPA from ${GITHUB_SHA::7}. Game data is not included."
+          --title "iOS latest" --notes "$BUILD_STAMP
+        Unsigned IPA from ${GITHUB_SHA::7}. Game data is not included."
 
     # Release runs: the tag created at the commit this run built, the notes
     # from that commit as the text, and a prerelease if the version has a '-'.
@@ -294,12 +308,13 @@ jobs:
           *) KIND="--prerelease=false --latest" ;;
         esac
         TITLE="$RELEASE_TITLE $VERSION"
+        { echo "$BUILD_STAMP"; echo; cat "$RELEASE_NOTES"; } > "$RUNNER_TEMP/release-notes.md"
         echo "Release \"$TITLE\" ($KIND) at $GITHUB_SHA"
         if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
           # the same tag on the same commit (checked before the build): update it
-          gh release edit "$RELEASE_TAG" --title "$TITLE" --notes-file "$RELEASE_NOTES" $KIND
+          gh release edit "$RELEASE_TAG" --title "$TITLE" --notes-file "$RUNNER_TEMP/release-notes.md" $KIND
           gh release upload "$RELEASE_TAG" "artifacts/$IPA_NAME" --clobber
         else
           gh release create "$RELEASE_TAG" "artifacts/$IPA_NAME" --target "$GITHUB_SHA" \
-            --title "$TITLE" --notes-file "$RELEASE_NOTES" $KIND
+            --title "$TITLE" --notes-file "$RUNNER_TEMP/release-notes.md" $KIND
         fi

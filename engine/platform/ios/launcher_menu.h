@@ -28,6 +28,11 @@ void IOS_RunSwitch( const char *docsdir ) __attribute__(( noreturn ));
 // GAMES during a game: the picker shown over it; finished( 1 ) when a game
 // was picked (the running one should end), finished( 0 ) on Cancel
 void IOS_PresentSwitch( UIViewController *host, void (^finished)( int picked ));
+
+@class NSString;
+// The build stamp, "build 80 · Nov 9" (SWBuildNumber, SWBuildDate in
+// Info.plist, written by CI), or "build dev"
+NSString *IOS_BuildStamp( void );
 #endif
 
 #endif // LAUNCHER_MENU_H
