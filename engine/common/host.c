@@ -683,6 +683,11 @@ void Host_Frame( double time )
 
 	host.framecount++;
 	host.pureframetime = Platform_DoubleTime() - t1;
+
+#if XASH_IOS_ANGLE && !XASH_DEDICATED
+	// frame times in the log while a game is on (ios_perf.c)
+	IOS_PerfFrame( host.pureframetime, cls.state == ca_active && !cl.background && cls.key_dest == key_game );
+#endif
 }
 
 /*

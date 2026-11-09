@@ -99,6 +99,19 @@ valve) and cs16-client with ReGameDLL_CS (cstrike). It writes
 prerelease for Sithewok-apps/ios-pipeline to sign; other branches keep it as a run
 artifact.
 
+Graphics: the `gles3compat` renderer on OpenGL ES 3.0 through ANGLE's Metal backend
+(`engine/platform/ios/ios_angle.c`: an EGL surface on SDL's Metal view), not Apple's
+deprecated OpenGL ES. The workflow's `angle` job builds ANGLE (`ANGLE_REV`, built for
+iOS 18 and newer) and caches it; the IPA carries `libEGL.framework` and
+`libGLESv2.framework` next to `SDL2.framework`. The engine opens them at run time:
+when they can't load or start (an older iOS, no Metal), the `gles1` renderer draws on
+Apple's OpenGL ES as before. `-ref gles1` in the launcher's command line picks that on
+purpose. `engine.log` says which runs (`Video: ...`, `ANGLE: ...`), and every 5 s of
+play logs a frame-time line (`ios_perf.c`): `iOS: frames 120.0 fps; per frame 6.1 ms
+(worst 9.0): game 2.0, drawing 3.5, present 0.6; ANGLE (Metal)` (game = the engine's
+own work, drawing = the renderer handing the GPU its work, present = the swap, which
+waits when the GPU or the screen is behind).
+
 Numbered releases: a manual run of master with `release=<tag>`
 (`gh workflow run ios-trilogy.yml --ref master -f release=ios-v0.1-beta1`, or the REST
 call `POST repos/sithewok13-dev/xash3d-fwgs/actions/workflows/ios-trilogy.yml/dispatches`

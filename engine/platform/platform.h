@@ -74,6 +74,28 @@ int IOS_PhotoHideHUD( void );
 void IOS_PhotoPostRender( void );
 #endif // TARGET_OS_IOS
 
+// iOS: OpenGL ES 3.0 on Metal through ANGLE (ios_angle.c), used by vid_sdl2.c;
+// also built on Linux with Mesa's EGL for testing (-DXASH_ANGLE_RIG=1)
+#if XASH_IOS || XASH_ANGLE_RIG
+#define XASH_IOS_ANGLE 1
+void IOS_Angle_ResetAttributes( void );
+void IOS_Angle_SetAttribute( int attr, int val ); // the renderer's REF_GL_* requests
+qboolean IOS_Angle_Wanted( void ); // the renderer asks for OpenGL ES 2+: ANGLE's
+qboolean IOS_Angle_Load( void ); // false: ANGLE is missing or broken (logged)
+qboolean IOS_Angle_CreateContext( void *window ); // false: logged, never tried again
+void IOS_Angle_DeleteContext( void );
+qboolean IOS_Angle_Active( void );
+void IOS_Angle_SwapBuffers( void );
+void *IOS_Angle_GetProcAddress( const char *name );
+int IOS_Angle_SetSwapInterval( int interval );
+int IOS_Angle_GetAttribute( int attr, int *val );
+
+// frame times in the log, every 5 s of play (ios_perf.c)
+void IOS_PerfAddDraw( double seconds );
+void IOS_PerfAddPresent( double seconds );
+void IOS_PerfFrame( double frame_seconds, qboolean playing );
+#endif // XASH_IOS || XASH_ANGLE_RIG
+
 #if XASH_WIN32 || XASH_LINUX
 #define XASH_PLATFORM_HAVE_STATUS 1
 #else

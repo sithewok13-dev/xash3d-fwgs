@@ -332,7 +332,11 @@ GL_GetProcAddress
 */
 void *GL_GetProcAddress( const char *name )
 {
+#if XASH_IOS_ANGLE
+	void *func = IOS_Angle_Active( ) ? IOS_Angle_GetProcAddress( name ) : SDL_GL_GetProcAddress( name );
+#else
 	void *func = SDL_GL_GetProcAddress( name );
+#endif
 
 #if XASH_PSVITA
 	// try to find in main module
@@ -359,6 +363,15 @@ void GL_UpdateSwapInterval( void )
 	{
 		ClearBits( gl_vsync.flags, FCVAR_CHANGED );
 
+#if XASH_IOS_ANGLE
+		if( IOS_Angle_Active( ))
+		{
+			if( IOS_Angle_SetSwapInterval( gl_vsync.value ) < 0 )
+				Con_Reportf( S_ERROR "ANGLE: eglSwapInterval failed\n" );
+			return;
+		}
+#endif
+
 		if( SDL_GL_SetSwapInterval( gl_vsync.value ) < 0 )
 			Con_Reportf( S_ERROR  "SDL_GL_SetSwapInterval: %s\n", SDL_GetError( ));
 	}
@@ -373,6 +386,9 @@ always return false
 */
 static qboolean GL_DeleteContext( void )
 {
+#if XASH_IOS_ANGLE
+	IOS_Angle_DeleteContext( );
+#endif
 	if( glw_state.context )
 	{
 		SDL_GL_DeleteContext( glw_state.context );
@@ -663,13 +679,26 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 	rserr_t err;
 	Uint32 flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE;
 	SDL_Rect rect = { SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, input_width, input_height };
+#if XASH_IOS_ANGLE
+	// OpenGL ES 3.0 on Metal through ANGLE for ref_gles3compat, Apple's
+	// OpenGL ES through SDL for ref_gles1 as before
+	qboolean use_angle = !glw_state.software && IOS_Angle_Wanted( );
+#else
+	const qboolean use_angle = false;
+#endif
 
 	// TODO: disabled for Windows for now
 #if !XASH_WIN32
 	SetBits( flags, SDL_WINDOW_ALLOW_HIGHDPI );
 #endif // !XASH_WIN32
 
-	if( !glw_state.software )
+	if( use_angle )
+	{
+#if !XASH_ANGLE_RIG // (on Linux, EGL draws on the plain X11 window)
+		SetBits( flags, SDL_WINDOW_METAL );
+#endif
+	}
+	else if( !glw_state.software )
 		SetBits( flags, SDL_WINDOW_OPENGL );
 
 	if( vid_maximized.value )
@@ -720,8 +749,25 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 			Con_Printf( "SDL_Renderer %s initialized\n", info.name );
 		}
 	}
+#if XASH_IOS_ANGLE
+	else if( use_angle )
+	{
+		if( !IOS_Angle_CreateContext( host.hWnd ))
+		{
+			// not rserr_invalid_context: no safe GL modes to go through,
+			// the next renderer (ref_gles1 on Apple's OpenGL ES) takes over
+			Con_Printf( S_ERROR "%s: ANGLE didn't start, falling back to Apple's OpenGL ES\n", __func__ );
+			err = rserr_unknown;
+			goto cleanup;
+		}
+		Con_Printf( "Video: OpenGL ES 3.0 on Metal (ANGLE)\n" );
+	}
+#endif
 	else
 	{
+#if XASH_IOS_ANGLE
+		Con_Printf( "Video: Apple's OpenGL ES\n" );
+#endif
 		glw_state.context = SDL_GL_CreateContext( host.hWnd );
 
 		if( !glw_state.context )
@@ -748,6 +794,9 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 	return rserr_ok;
 
 cleanup:
+#if XASH_IOS_ANGLE
+	IOS_Angle_DeleteContext( );
+#endif
 	if( glw_state.context )
 	{
 		SDL_GL_DeleteContext( glw_state.context );
@@ -795,17 +844,36 @@ GL_SetupAttributes
 static void GL_SetupAttributes( void )
 {
 	SDL_GL_ResetAttributes();
+#if XASH_IOS_ANGLE
+	IOS_Angle_ResetAttributes( );
+#endif
 
 	ref.dllFuncs.GL_SetupAttributes( glw_state.safe );
 }
 
 void GL_SwapBuffers( void )
 {
+#if XASH_IOS_ANGLE
+	double start = Platform_DoubleTime( );
+
+	if( IOS_Angle_Active( ))
+		IOS_Angle_SwapBuffers( );
+	else
+		SDL_GL_SwapWindow( host.hWnd );
+
+	IOS_PerfAddPresent( Platform_DoubleTime( ) - start );
+#else
 	SDL_GL_SwapWindow( host.hWnd );
+#endif
 }
 
 int GL_SetAttribute( int attr, int val )
 {
+#if XASH_IOS_ANGLE
+	// recorded for ANGLE's config, and passed on to SDL for Apple's
+	IOS_Angle_SetAttribute( attr, val );
+#endif
+
 	switch( attr )
 	{
 #define MAP_REF_API_ATTRIBUTE_TO_SDL( name ) case REF_##name: return SDL_GL_SetAttribute( SDL_##name, val );
@@ -851,6 +919,11 @@ int GL_SetAttribute( int attr, int val )
 
 int GL_GetAttribute( int attr, int *val )
 {
+#if XASH_IOS_ANGLE
+	if( IOS_Angle_Active( ))
+		return IOS_Angle_GetAttribute( attr, val );
+#endif
+
 	switch( attr )
 	{
 #define MAP_REF_API_ATTRIBUTE_TO_SDL( name ) case REF_##name: return SDL_GL_GetAttribute( SDL_##name, val );
@@ -928,6 +1001,19 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 
 		// refdll can request some attributes
 		GL_SetupAttributes( );
+
+#if XASH_IOS_ANGLE
+		// ANGLE draws on a Metal view: no SDL OpenGL (ES) library. Without
+		// ANGLE this renderer stops here, and the next one (ref_gles1 on
+		// Apple's OpenGL ES) takes over.
+		if( IOS_Angle_Wanted( ))
+		{
+			if( IOS_Angle_Load( ))
+				break;
+			Con_Printf( S_ERROR "ANGLE isn't available, falling back to Apple's OpenGL ES\n" );
+			return false;
+		}
+#endif
 
 		if( SDL_GL_LoadLibrary( EGL_LIB ) < 0 )
 		{

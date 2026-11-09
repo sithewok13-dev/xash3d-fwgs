@@ -3945,7 +3945,15 @@ void Host_ClientFrame( void )
 	VID_CheckChanges();
 
 	// update the screen
+#if XASH_IOS_ANGLE
+	{
+		double start = Platform_DoubleTime( );
+		SCR_UpdateScreen ();
+		IOS_PerfAddDraw( Platform_DoubleTime( ) - start );
+	}
+#else
 	SCR_UpdateScreen ();
+#endif
 
 	// update audio
 	SND_UpdateSound ();

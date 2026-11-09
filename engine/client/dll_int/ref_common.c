@@ -802,6 +802,22 @@ qboolean R_Init( void )
 	if( Sys_GetParmFromCmdLine( "-ref", requested_cmdline ))
 		success = R_LoadRenderer( requested_cmdline, false );
 
+#if XASH_IOS_ANGLE
+	// iOS: ref_gles3compat on OpenGL ES 3.0 through ANGLE (Metal) first,
+	// whatever video.cfg remembers (it kept gles1 before ANGLE came); when
+	// ANGLE can't start, the renderers below in order: ref_gles1 on Apple's
+	// OpenGL ES, as before. "-ref gles1" on the command line still wins.
+	if( !success && Q_stricmp( requested_cmdline, "gles3compat" ))
+	{
+		Q_strncpy( requested_cvar, "gles3compat", sizeof( requested_cvar ));
+		success = R_LoadRenderer( requested_cvar, true );
+
+		if( success )
+			Cvar_DirectSet( &r_refdll, requested_cvar );
+		else
+			Con_Printf( S_WARN "gles3compat renderer didn't start, trying the others\n" );
+	}
+#else
 	if( !success && !COM_StringEmptyOrNULL( r_refdll.string ) && Q_stricmp( requested_cmdline, r_refdll.string ))
 	{
 		Q_strncpy( requested_cvar, r_refdll.string, sizeof( requested_cvar ));
@@ -811,6 +827,7 @@ qboolean R_Init( void )
 		// might not be supported (ref_gl on Android for example)
 		success = R_LoadRenderer( requested_cvar, !host_developer.value );
 	}
+#endif // !XASH_IOS_ANGLE
 
 	if( !success )
 	{

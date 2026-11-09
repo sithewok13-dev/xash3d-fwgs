@@ -17,6 +17,12 @@
 #     master, the tag isn't ios-v<version>, the tag is already on another
 #     commit, or the notes have no "### What's in <tag>" line.
 #   Running it again for the same tag on the same commit updates that release.
+#
+# The app draws with OpenGL ES 3.0 on Metal through ANGLE
+# (engine/platform/ios/ios_angle.c), falling back to Apple's OpenGL ES.
+# ANGLE is built by the "angle" job with Chromium's tools (depot_tools, gn)
+# and cached: the first run takes a long time, later runs restore it in
+# seconds. To rebuild it, change ANGLE_REV or bump ANGLE_CACHE_VERSION.
 name: iOS (HL + OF + BS)
 
 on:
@@ -41,8 +47,113 @@ concurrency:
   group: ${{ inputs.release != '' && format('ios-release-{0}', inputs.release) || format('ios-{0}', github.ref) }}
   cancel-in-progress: ${{ inputs.release == '' }}
 
+env:
+  # ANGLE branch chromium/8060 (Sept 15 2026), from the github.com/google/angle
+  # mirror: the revision the owner's Jedi Knight, Dark Forces and DOOM 3 ports ship.
+  ANGLE_REV: 4b7308a36376199c095ccb0ab69b773daa8b9fbe
+  ANGLE_CACHE_VERSION: v1
+  # ANGLE's minimum iOS. The app still installs on older ones (12.0): the
+  # engine opens ANGLE at run time, and when dyld refuses it there, the app
+  # draws with Apple's OpenGL ES as before.
+  ANGLE_IOS_TARGET: '18.0'
+
 jobs:
+  angle:
+    runs-on: macos-15
+    # the first (uncached) build is long
+    timeout-minutes: 330
+    outputs:
+      key: ${{ steps.angle-cache.outputs.cache-primary-key }}
+    steps:
+    - name: Restore ANGLE from cache
+      id: angle-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: angle-prebuilt
+        key: angle-ios-arm64-${{ env.ANGLE_REV }}-ios${{ env.ANGLE_IOS_TARGET }}-${{ env.ANGLE_CACHE_VERSION }}
+        lookup-only: true
+
+    - name: Select newest Xcode
+      if: steps.angle-cache.outputs.cache-hit != 'true'
+      run: |
+        set -e
+        XCODE=$(ls -d /Applications/Xcode_*.app | grep -iv beta | sort -V | tail -1)
+        echo "Using $XCODE"
+        sudo xcode-select -s "$XCODE/Contents/Developer"
+        xcodebuild -version
+        xcrun --sdk iphoneos --show-sdk-version
+
+    - name: Free disk space for ANGLE
+      if: steps.angle-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo rm -rf ~/Library/Android /usr/local/share/dotnet ~/.dotnet /usr/local/lib/node_modules || true
+        df -h /
+
+    - name: Build ANGLE (cache miss only)
+      if: steps.angle-cache.outputs.cache-hit != 'true'
+      run: |
+        set -ex
+        git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+        export PATH="$RUNNER_TEMP/depot_tools:$PATH"
+
+        mkdir -p "$RUNNER_TEMP/angle" && cd "$RUNNER_TEMP/angle"
+        git init -q
+        git fetch --depth 1 https://github.com/google/angle "$ANGLE_REV"
+        git checkout -q FETCH_HEAD
+
+        # an unmanaged solution rooted at this checkout, for iOS, without
+        # the (large, unneeded) Dawn/WebGPU dependencies
+        cat > .gclient <<'GCLIENT'
+        solutions = [
+          {
+            "name": ".",
+            "url": "https://chromium.googlesource.com/angle/angle.git",
+            "deps_file": "DEPS",
+            "managed": False,
+            "custom_deps": {},
+            "custom_vars": {
+              "checkout_angle_dawn_deps": False,
+            },
+          },
+        ]
+        target_os = ["ios"]
+        GCLIENT
+
+        gclient sync --no-history --shallow -j8
+        df -h /
+
+        gn gen out/ios --args="
+          is_debug=false
+          is_component_build=false
+          symbol_level=0
+          target_os=\"ios\"
+          target_cpu=\"arm64\"
+          target_environment=\"device\"
+          ios_deployment_target=\"$ANGLE_IOS_TARGET\"
+          ios_enable_code_signing=false
+          angle_enable_vulkan=false
+          angle_enable_swiftshader=false
+          angle_enable_wgpu=false
+          angle_build_tests=false
+        "
+        autoninja -C out/ios libEGL libGLESv2
+
+        # only the two frameworks (the engine has no build-time use for ANGLE)
+        DEST="$GITHUB_WORKSPACE/angle-prebuilt"
+        mkdir -p "$DEST/out/ios"
+        cp -R out/ios/libEGL.framework out/ios/libGLESv2.framework "$DEST/out/ios/"
+        ls -la "$DEST/out/ios"
+
+    # saved at once, so a failure later doesn't lose the slow build
+    - name: Save ANGLE to cache
+      if: steps.angle-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: angle-prebuilt
+        key: ${{ steps.angle-cache.outputs.cache-primary-key }}
+
   ipa:
+    needs: angle
     runs-on: macos-26
     timeout-minutes: 60
     env:
@@ -113,12 +224,31 @@ jobs:
         sudo cp -R sdl-ios/SDL2.framework /Library/Frameworks/
         mkdir -p build && cp -R sdl-ios/SDL2.framework build/
 
+    - name: Restore ANGLE
+      uses: actions/cache/restore@v4
+      with:
+        path: angle-prebuilt
+        key: ${{ needs.angle.outputs.key }}
+        fail-on-cache-miss: true
+
+    - name: Show ANGLE
+      run: |
+        for f in libEGL libGLESv2; do
+          file "angle-prebuilt/out/ios/$f.framework/$f"
+          otool -l "angle-prebuilt/out/ios/$f.framework/$f" | grep -A4 LC_BUILD_VERSION | grep -E 'platform|minos' || true
+          otool -L "angle-prebuilt/out/ios/$f.framework/$f" | head -5
+        done
+
     - name: Build IPA
-      run: bash scripts/ios/build_trilogy.sh
+      run: ANGLE_ROOT="$GITHUB_WORKSPACE/angle-prebuilt" bash scripts/ios/build_trilogy.sh
 
     - name: Check IPA contents
       run: |
         unzip -l "artifacts/$IPA_NAME" | grep -E '\.dylib$|/xash$'
+        for f in libEGL libGLESv2; do
+          unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/$f.framework/$f$" || { echo "missing ANGLE's $f.framework"; exit 1; }
+        done
+        unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/libref_gles3compat" || { echo "missing the gles3compat renderer"; exit 1; }
         for d in valve gearbox bshift; do
           unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/$d/dlls/" || { echo "missing $d server library"; exit 1; }
           unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/$d/cl_dlls/" || { echo "missing $d client library"; exit 1; }
