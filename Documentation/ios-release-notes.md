@@ -27,7 +27,7 @@
 The first public test release. This is a **beta**: it has been played on one iPhone only, so expect rough edges.
 
 - **Half-Life, Opposing Force and Blue Shift** in one app, picked on its *Choose a game* screen, which says for each game whether it's ready or which folder is missing.
-- **Touch controls** in the same style as the owner's other iOS ports (Jedi Knight, Serious Sam): a move stick where your left thumb lands, drag to look, FIRE with DUCK, USE and JUMP around it, ALT fire and RELOAD, quick save and quick load, and a weapon wheel.
+- **Touch controls** in the same style as the owner's other iOS ports (Jedi Knight, Serious Sam): a move stick where your left thumb lands, drag to look, FIRE with DUCK, USE and JUMP around it, ALT fire and RELOAD, SAVE and LOAD (tap for the game's save and load menus, hold to quick save and quick load), and a weapon wheel.
 - **LIGHT**, the flashlight (in Opposing Force, the night vision).
 - **Tilt aiming (gyro)**, off until you switch it on.
 - **The camera:** photos, selfies, bursts, a cinematic burst and Action Freeze, a free camera around a frozen moment.
@@ -43,8 +43,8 @@ The touch controls appear while you're playing and hide in the menus, the consol
 Where everything is (on a phone, turn it sideways to see the whole picture):
 
 ```
- NEXT  LIGHT          [camera]     λ       QUICK  QUICK  MENU
- WPN                                       SAVE   LOAD
+ NEXT  LIGHT          [camera]     λ       SAVE   LOAD   MENU
+ WPN                                          60 FPS
    [GYRO] [SENS] [RUN] [OPACITY] [FPS] [CAMERA] [CHEAT] [LEVEL] [CTRL] [KEYS] [GAMES]
                            (MENU's tray, while it's open)
                                                             RELOAD
@@ -76,9 +76,9 @@ Exact positions shift a little to fit your screen; the buttons stay clear of the
 - Each slice is a weapon you have, with its HUD icon. The middle shows the one you're pointing at, its name and its ammo (in the clip | in reserve). Weapons with no ammo are faded.
 - The gap at the bottom of the wheel cancels. In single player the game holds still while the wheel is open. You feel a tick for each slice.
 
-#### Quick save and quick load: why the short hold
+#### SAVE and LOAD: tap for the menu, hold for a quick one
 
-**QUICK SAVE** makes a quick save and **QUICK LOAD** loads it. Both need you to **hold** the button for about a **third of a second**: a ring fills round it, then it happens. **Why the hold?** So a stray touch near the top of the screen can't save over your quick save, or throw away your progress by loading. Sliding your finger off the button before the ring is full cancels.
+**Tap SAVE** for the game's Save Game menu and **tap LOAD** for its Load Game menu, to pick a slot. **Hold SAVE** for about a **third of a second** to make a quick save, and **hold LOAD** to load it: a ring fills round the button, then it happens. **Why the hold?** So a stray touch near the top of the screen can't save over your quick save, or throw away your progress by loading: a tap only opens a menu. Sliding your finger off the button before the ring is full cancels, and if both are held, SAVE wins. In a network game there's no saving or loading.
 
 #### MENU and its hidden tray
 
@@ -88,7 +88,7 @@ Exact positions shift a little to fit your screen; the buttons stay clear of the
 - **SENS:** how fast a drag turns the view: each tap steps through 0.5x, 0.75x, 1x, 1.25x, 1.5x and 2x. **Hold SENS** for the default, 1x.
 - **RUN:** always run (lit) or walk unless the stick is pushed up to `^^` (the default).
 - **OPACITY:** a tap opens a slider under the tray to make the controls fainter, from 20% to 100% in 5% steps, live. **Hold OPACITY** for full strength again. The tray itself and the wheel stay at full strength.
-- **FPS:** shows the frame rate.
+- **FPS:** shows the frame rate, in small white text under SAVE and LOAD while you play (not while the tray is open). **Hold FPS** to switch between 60 and 120 frames a second.
 - **CAMERA:** shows or hides the camera button. **Hold CAMERA** for its options (see *The camera*).
 - **CHEAT:** switches the cheat on and shows its λ button; tapped again, the cheat goes off and the button goes away.
 - **LEVEL** (only while the cheat is on, in single player): the chapter list, see *The cheat*.

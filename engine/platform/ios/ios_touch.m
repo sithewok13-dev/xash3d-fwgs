@@ -68,6 +68,10 @@ int IOS_Angle_FellBack( void );
 // Holds
 #define IOSTOUCH_SAVE_HOLD 0.3
 #define IOSTOUCH_MENU_HOLD 0.45
+// The FPS readout: its size in points, and how long it counts frames for
+#define IOSTOUCH_FPS_W 70.0
+#define IOSTOUCH_FPS_H 22.0
+#define IOSTOUCH_FPS_PERIOD 0.5
 // The cheat: CHEAT held this long switches it; while it's on, JUMP or USE
 // held still (within IOSTOUCH_CHEAT_STILL points) this long switches noclip
 // or notarget, and two quick taps of JUMP end noclip ("land")
@@ -186,7 +190,7 @@ typedef enum
 {
 	KIND_HOLD,     // holds a command while down
 	KIND_TAP,      // runs an action when tapped
-	KIND_HOLDACT,  // runs an action after a hold, with a ring
+	KIND_HOLDACT,  // SAVE / LOAD: tap = the game's Save / Load Game menu, held = quick save / load (a ring)
 	KIND_MENU,     // tap: Escape, hold: tray
 	KIND_TRAY,     // a tray or option row button
 	KIND_CHEAT,    // held: the cheat on or off
@@ -218,8 +222,8 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_RELOAD]    = { "RELOAD",       KIND_HOLD,    IOSTOUCH_CMD_RELOAD,    28, 1, ROW_MAIN },
 [BTN_NEXTWPN]   = { "NEXT\nWPN",    KIND_WHEEL,   IOSTOUCH_ACT_NEXTWEAPON, 22, 0, ROW_MAIN, IOSTOUCH_WHEEL_HOLD },
 [BTN_FLASH]     = { "LIGHT",        KIND_TAP,     IOSTOUCH_ACT_FLASHLIGHT, 22, 0, ROW_MAIN },
-[BTN_QSAVE]     = { "QUICK\nSAVE",  KIND_HOLDACT, IOSTOUCH_ACT_QUICKSAVE, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
-[BTN_QLOAD]     = { "QUICK\nLOAD",  KIND_HOLDACT, IOSTOUCH_ACT_QUICKLOAD, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
+[BTN_QSAVE]     = { "SAVE",         KIND_HOLDACT, IOSTOUCH_ACT_QUICKSAVE, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
+[BTN_QLOAD]     = { "LOAD",         KIND_HOLDACT, IOSTOUCH_ACT_QUICKLOAD, 22, 0, ROW_MAIN, IOSTOUCH_SAVE_HOLD },
 [BTN_MENU]      = { "MENU",         KIND_MENU,    IOSTOUCH_ACT_ESCAPE,    22, 0, ROW_MAIN, IOSTOUCH_MENU_HOLD },
 [BTN_CHEAT]     = { "\u03BB",      KIND_CHEAT,   0,                      22, 0, ROW_MAIN, IOSTOUCH_CHEAT_HOLD },
 [BTN_CAMERA]    = { "",             KIND_CAMERA,  0,                      22, 0, ROW_MAIN, IOSTOUCH_CAM_HOLD },
@@ -523,6 +527,8 @@ static void SaveGyro( void )
 	UIView *opacity_panel;       // OPACITY's slider, under the tray
 	UISlider *opacity_slider;
 	UILabel *tray_version;       // the build stamp, under the middle of the tray
+	UILabel *fps_label;          // the FPS readout (the tray's FPS), under SAVE and LOAD
+	int fps_label_shown;         // the number it says (-1: none yet)
 	CAShapeLayer *run_chevrons, *run_link;
 	int run_lit;                 // what run_marker shows (-1: not yet set)
 	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
@@ -561,6 +567,8 @@ static void SaveGyro( void )
 - (void)releaseAll;
 - (void)updateHolds;
 - (int)gyroThumbDown;
+- (int)savePending;
+- (void)countFrame:(CFTimeInterval)now restart:(int)restart;
 - (void)showToast:(NSString *)text;
 - (void)setCheat:(int)on;
 - (void)confirmGames;
@@ -778,6 +786,22 @@ static CGFloat ButtonAlpha( int i, int on )
 	tray_version.hidden = YES;
 	[self addSubview:tray_version];
 
+	// the FPS readout: just text, touches go past it
+	fps_label = [[UILabel alloc] initWithFrame:CGRectMake( 0, 0, IOSTOUCH_FPS_W, IOSTOUCH_FPS_H )];
+	fps_label.textAlignment = NSTextAlignmentCenter;
+	fps_label.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightSemibold];
+	fps_label.textColor = [UIColor colorWithWhite:1.0 alpha:0.85];
+	fps_label.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.3];
+	fps_label.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.8];
+	fps_label.shadowOffset = CGSizeMake( 0, 1 );
+	fps_label.layer.cornerRadius = IOSTOUCH_FPS_H * 0.5;
+	fps_label.clipsToBounds = YES;
+	fps_label.userInteractionEnabled = NO;
+	fps_label.text = @"-- FPS";
+	fps_label_shown = -1;
+	fps_label.hidden = YES;
+	[self addSubview:fps_label];
+
 	return self;
 }
 
@@ -912,8 +936,12 @@ static CGFloat ButtonAlpha( int i, int on )
 	[self place:BTN_MENU at:CGPointMake( right - 24, top )];
 	[self place:BTN_CAMERA at:CGPointMake( size.width * 0.5, top )];
 	[self place:BTN_FREEZE_X at:CGPointMake( right - 24, top )];
-	// CHEAT between the middle of the top row (CAMERA's place) and QUICK SAVE
+	// CHEAT between the middle of the top row (CAMERA's place) and SAVE
 	[self place:BTN_CHEAT at:CGPointMake(( size.width * 0.5 + btn_pos[BTN_QSAVE].x ) * 0.5, top )];
+	// the FPS readout under SAVE and LOAD, clear of the corner (the open
+	// tray lies over this spot, so it hides while the tray is open)
+	fps_label.center = CGPointMake(( btn_pos[BTN_QSAVE].x + btn_pos[BTN_QLOAD].x ) * 0.5,
+		top + buttons[BTN_QSAVE].radius + 8 + IOSTOUCH_FPS_H * 0.5 );
 
 	cheat_tags[0].center = CGPointMake( btn_pos[BTN_JUMP].x, btn_pos[BTN_JUMP].y + buttons[BTN_JUMP].radius + 7 );
 	cheat_tags[1].center = CGPointMake( btn_pos[BTN_USE].x, btn_pos[BTN_USE].y + buttons[BTN_USE].radius + 7 );
@@ -1005,6 +1033,8 @@ static CGFloat ButtonAlpha( int i, int on )
 		opacity_panel.center = CGPointMake( cx, top + 2 * IOSTOUCH_TRAY_DROP );
 		opacity_slider.value = ctrl_opacity;
 	}
+
+	fps_label.hidden = !show_fps || tray_open || seq != SEQ_NONE || freezing;
 
 	// the build stamp, centred under the tray's shown buttons
 	tray_version.hidden = !tray_open || seq != SEQ_NONE || freezing;
@@ -1316,7 +1346,7 @@ static CGFloat ButtonAlpha( int i, int on )
 	case BTN_TRAY_FPS:
 		show_fps = !show_fps;
 		[[NSUserDefaults standardUserDefaults] setBool:show_fps forKey:KEY_SHOW_FPS];
-		QueueAction( show_fps ? IOSTOUCH_ACT_SHOWFPS : IOSTOUCH_ACT_HIDEFPS );
+		[self updateShown];
 		break;
 	case BTN_TRAY_GAMES:
 		[self confirmGames];
@@ -2437,6 +2467,11 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			else if( tap )
 				[self takePhoto:0];
 			break;
+		case KIND_HOLDACT:
+			// a tap: the game's Save / Load Game menu (held, the quick one)
+			if( tap && !( b == BTN_QLOAD && [self savePending] ))
+				QueueAction( b == BTN_QSAVE ? IOSTOUCH_ACT_SAVEMENU : IOSTOUCH_ACT_LOADMENU );
+			break;
 		case KIND_LEVEL:
 			if( level_counting && !cancelled && !s->off && btn_shown[b] )
 			{
@@ -2670,10 +2705,62 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			level_index = 0;
 			level_next = now + IOSTOUCH_LEVEL_STEP;
 			break;
+		case BTN_QLOAD:
+			// SAVE wins a tie: no quick load while SAVE is held too
+			if( ![self savePending] )
+				QueueAction( def->arg );
+			break;
 		default:
 			QueueAction( def->arg );
 			break;
 		}
+	}
+}
+
+// SAVE held (not slid off, not fired yet): LOAD gives way to it
+- (int)savePending
+{
+	for( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ )
+	{
+		slot_t *s = &slots[i];
+
+		if( s->touch && s->role == ROLE_BUTTON && s->button == BTN_QSAVE && !s->off && !s->done )
+			return 1;
+	}
+
+	return 0;
+}
+
+// Once per engine frame while the overlay shows: the FPS readout counts the
+// frames drawn over IOSTOUCH_FPS_PERIOD; time out of the game (menus,
+// loading) doesn't count, it starts afresh (restart)
+- (void)countFrame:(CFTimeInterval)now restart:(int)restart
+{
+	static CFTimeInterval t0;
+	static int frames, shown = -1;
+
+	if( !show_fps || restart || t0 <= 0 )
+	{
+		t0 = show_fps && !restart ? now : 0;
+		frames = 0;
+		if( restart )
+			shown = -1;
+	}
+	else
+	{
+		frames++;
+		if( now - t0 >= IOSTOUCH_FPS_PERIOD )
+		{
+			shown = (int)lround( frames / ( now - t0 ));
+			t0 = now;
+			frames = 0;
+		}
+	}
+
+	if( shown != fps_label_shown )
+	{
+		fps_label_shown = shown;
+		fps_label.text = shown < 0 ? @"-- FPS" : [NSString stringWithFormat:@"%d FPS", shown];
 	}
 }
 
@@ -2869,6 +2956,11 @@ static void ApplyMaxFps( void )
 	frame_rate->ticks = 0;
 }
 
+int IOSTouch_ShowFps( void )
+{
+	return show_fps;
+}
+
 int IOSTouch_MaxFps( void )
 {
 	static int loaded;
@@ -2960,9 +3052,6 @@ void IOSTouch_Frame( void *window, int ingame )
 
 			overlay = [[IOSTouchOverlay alloc] initWithFrame:host.bounds];
 			overlay.hidden = YES;
-
-			// the FPS counter is the engine's, as the player last left it
-			QueueAction( show_fps ? IOSTOUCH_ACT_SHOWFPS : IOSTOUCH_ACT_HIDEFPS );
 		}
 
 		// SDL may make its view again
@@ -3045,6 +3134,7 @@ void IOSTouch_Frame( void *window, int ingame )
 			[overlay updateHolds];
 			[overlay updateFlashlight];
 		}
+		[overlay countFrame:CACurrentMediaTime() restart:!overlay_shown];
 
 		GyroFrame();
 	}

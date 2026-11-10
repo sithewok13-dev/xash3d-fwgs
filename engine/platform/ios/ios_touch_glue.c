@@ -56,11 +56,14 @@ static void IOS_TouchRunAction( int action )
 	case IOSTOUCH_ACT_CONSOLE:
 		Cbuf_AddText( "toggleconsole\n" );
 		break;
-	case IOSTOUCH_ACT_SHOWFPS:
-		Cvar_Set( "cl_showfps", "1" );
-		break;
-	case IOSTOUCH_ACT_HIDEFPS:
-		Cvar_Set( "cl_showfps", "0" );
+	case IOSTOUCH_ACT_SAVEMENU:
+	case IOSTOUCH_ACT_LOADMENU:
+		// the game's own menus (mainui); not in a network game, where
+		// saving isn't allowed and loading would leave it
+		if( cl.maxclients > 1 || GI->gamemode == GAME_MULTIPLAYER_ONLY )
+			IOSTouch_ShowMessage( "No saving or loading in a network game" );
+		else
+			Cbuf_AddText( action == IOSTOUCH_ACT_SAVEMENU ? "menu_savegame\n" : "menu_loadgame\n" );
 		break;
 	case IOSTOUCH_ACT_GAMES:
 		// the engine shuts down; the picked game starts at the app's next launch
@@ -121,6 +124,10 @@ void IOS_TouchFrame( void )
 			Con_Printf( "iOS: fps_max %d (MENU's tray: hold FPS for 60 or 120)\n", fps );
 		}
 	}
+	// the overlay's FPS readout replaces the engine's tiny one in the corner
+	if( IOSTouch_ShowFps( ) && Cvar_VariableValue( "cl_showfps" ) != 0.0f )
+		Cvar_Set( "cl_showfps", "0" );
+
 	// a game running (not the menu's background map), or hosting one, menus
 	// over it included
 	IOSTouch_KeepAwake(( cls.state == ca_active && !cl.background ) || ( SV_Active( ) && SV_GetMaxClients( ) > 1 ));

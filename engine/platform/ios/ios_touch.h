@@ -43,8 +43,8 @@ enum
 	IOSTOUCH_ACT_QUICKLOAD,
 	IOSTOUCH_ACT_ESCAPE,
 	IOSTOUCH_ACT_CONSOLE,
-	IOSTOUCH_ACT_SHOWFPS,
-	IOSTOUCH_ACT_HIDEFPS,
+	IOSTOUCH_ACT_SAVEMENU, // SAVE tapped: the game's Save Game menu
+	IOSTOUCH_ACT_LOADMENU, // LOAD tapped: its Load Game menu
 	IOSTOUCH_ACT_GAMES, // end the game (a next one was picked, see IOS_PresentSwitch)
 	IOSTOUCH_ACT_PAUSE, // single player paused while "Switch game" is up...
 	IOSTOUCH_ACT_UNPAUSE, // ...and on again after its Cancel
@@ -75,6 +75,10 @@ void IOSTouch_ToggleCheat( void );
 // MENU's tray FPS held: 60 or 120 frames a second (remembered, 60 at first);
 // the engine's fps_max follows it
 int IOSTouch_MaxFps( void );
+
+// MENU's tray FPS tapped: the overlay's FPS readout shows (the engine's
+// own, cl_showfps, is kept off meanwhile)
+int IOSTouch_ShowFps( void );
 
 // TAPS: the touch debugging marks are on (console: ios_taps 0/1)
 int IOSTouch_ShowTaps( void );

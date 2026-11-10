@@ -53,8 +53,10 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   RELOAD also looks.
 - **Buttons:** FIRE with DUCK, USE and JUMP around it, plus ALT (secondary fire) and
   RELOAD. Top row: NEXT WPN, LIGHT (flashlight; Opposing Force's night vision), the
-  camera (middle), the cheat's λ (once CHEAT is on), QUICK SAVE and QUICK LOAD (hold
-  0.3 s), MENU.
+  camera (middle), the cheat's λ (once CHEAT is on), SAVE and LOAD (tap: the game's Save
+  Game / Load Game menu, `menu_savegame` / `menu_loadgame`; hold 0.3 s with a ring: quick
+  save / quick load; sliding off cancels, SAVE wins a tie; in a network game a tap only
+  says there's no saving or loading there), MENU.
 - **NEXT WPN:** tap = next weapon with ammo; a 10 pt slide opens the weapon wheel at
   once; a 0.3 s hold opens it to tap. One slice per weapon (HUD icon, ammo; no ammo
   faded), the bottom gap cancels, a haptic tick per slice, and a single player game
@@ -62,7 +64,9 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
 - **MENU:** tap opens the game menu. Hold 0.45 s for the tray: GYRO (tap OFF/on; hold
   for MODE TOUCH/ALWAYS and gyro speed 1/1.5/2/3x, default 1.5x), SENS (0.5, 0.75, 1,
   1.25, 1.5, 2x; hold for 1x), RUN, OPACITY (tap: a slider, 20-100% in 5% steps; hold:
-  100%), FPS (tap shows/hides the counter; hold 0.45 s to switch 60 <-> 120 frames a
+  100%), FPS (tap shows/hides the overlay's readout, 13 pt
+  "60 FPS" under SAVE and LOAD, hidden while the tray is open; the engine's tiny
+  `cl_showfps` text is kept off meanwhile; hold 0.45 s to switch 60 <-> 120 frames a
   second, default 60: the screen is asked for that rate and fps_max follows it), CAMERA (tap shows/hides the camera button; hold for CLEAN, HUD, HUD+BTNS,
   SELFIES 1/3/5, FREEZE), CHEAT, LEVEL, CTRL (NORMAL or SWAP sides), KEYS (console)
   and GAMES. Settings are remembered; the cheat starts off each launch. Under the tray,
