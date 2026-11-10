@@ -31,6 +31,8 @@ GNU General Public License for more details.
 #include <execinfo.h>
 #include <dlfcn.h>
 #include <sys/ucontext.h>
+#include <unistd.h>
+#include <stdint.h>
 #endif
 
 #if XASH_ANDROID
@@ -102,8 +104,55 @@ static int Sys_CrashDetailsIOS( int logfd, char *message, int len, size_t max_le
 }
 #endif // XASH_IOS
 
+#if XASH_IOS
+/*
+The signal first, straight to Documents/xash-trace.txt with write() alone:
+if anything after it dies too, the trace still says how the app went.
+*/
+static void Sys_CrashTraceSignalIOS( int signal, void *addr )
+{
+	static const char hex[] = "0123456789abcdef";
+	char line[96] = "crash: signal ";
+	int fd = IOS_TraceFd( ), len = Q_strlen( line ), i;
+	uintptr_t a = (uintptr_t)addr;
+
+	if( fd < 0 )
+		return;
+
+	if( signal >= 10 )
+		line[len++] = '0' + ( signal / 10 ) % 10;
+	line[len++] = '0' + signal % 10;
+	line[len++] = ' ';
+	line[len++] = '(';
+	switch( signal )
+	{
+	case SIGSEGV: memcpy( line + len, "SIGSEGV", 7 ); len += 7; break;
+	case SIGBUS: memcpy( line + len, "SIGBUS", 6 ); len += 6; break;
+	case SIGABRT: memcpy( line + len, "SIGABRT", 7 ); len += 7; break;
+	case SIGILL: memcpy( line + len, "SIGILL", 6 ); len += 6; break;
+	case SIGTRAP: memcpy( line + len, "SIGTRAP", 7 ); len += 7; break;
+	case SIGFPE: memcpy( line + len, "SIGFPE", 6 ); len += 6; break;
+	case SIGSYS: memcpy( line + len, "SIGSYS", 6 ); len += 6; break;
+	default: line[len++] = '?'; break;
+	}
+	memcpy( line + len, ") at 0x", 7 );
+	len += 7;
+	for( i = (int)sizeof( a ) * 2 - 1; i >= 0; i-- )
+		line[len++] = hex[( a >> ( i * 4 )) & 15];
+	line[len++] = '\n';
+
+	ssize_t unused = write( fd, line, len );
+	(void)unused;
+	fsync( fd );
+}
+#endif // XASH_IOS
+
 static void Sys_Crash( int signal, siginfo_t *si, void *context )
 {
+#if XASH_IOS
+	Sys_CrashTraceSignalIOS( signal, si ? si->si_addr : NULL );
+#endif
+
 	// safe actions first, stack and memory may be corrupted
 	int len = Q_snprintf( crash_message, sizeof( crash_message ), "Ver: " XASH_ENGINE_NAME " " XASH_VERSION " (build %i-%s-%s, %s-%s)\n",
 		Q_buildnum(), g_buildcommit, g_buildbranch, Q_buildos(), Q_buildarch() );
@@ -193,6 +242,11 @@ static struct sigaction old_segv_act;
 static struct sigaction old_abrt_act;
 static struct sigaction old_bus_act;
 static struct sigaction old_ill_act;
+#if XASH_IOS
+static struct sigaction old_trap_act;
+static struct sigaction old_fpe_act;
+static struct sigaction old_sys_act;
+#endif
 
 void Sys_SetupCrashHandler( const char *argv0 )
 {
@@ -229,6 +283,12 @@ void Sys_SetupCrashHandler( const char *argv0 )
 	sigaction( SIGABRT, &act, &old_abrt_act );
 	sigaction( SIGBUS,  &act, &old_bus_act );
 	sigaction( SIGILL,  &act, &old_ill_act );
+#if XASH_IOS
+	// also traps (Swift, libdispatch, __builtin_trap), so the trace says why
+	sigaction( SIGTRAP, &act, &old_trap_act );
+	sigaction( SIGFPE,  &act, &old_fpe_act );
+	sigaction( SIGSYS,  &act, &old_sys_act );
+#endif
 }
 
 void Sys_RestoreCrashHandler( void )
@@ -237,6 +297,11 @@ void Sys_RestoreCrashHandler( void )
 	sigaction( SIGABRT, &old_abrt_act, NULL );
 	sigaction( SIGBUS,  &old_bus_act, NULL );
 	sigaction( SIGILL,  &old_ill_act, NULL );
+#if XASH_IOS
+	sigaction( SIGTRAP, &old_trap_act, NULL );
+	sigaction( SIGFPE,  &old_fpe_act, NULL );
+	sigaction( SIGSYS,  &old_sys_act, NULL );
+#endif
 }
 
 #endif // XASH_FREEBSD || XASH_NETBSD || XASH_OPENBSD || XASH_ANDROID || XASH_LINUX

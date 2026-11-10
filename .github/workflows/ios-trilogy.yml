@@ -259,7 +259,8 @@ jobs:
       run: |
         unzip -l "artifacts/$IPA_NAME" | grep -E '\.dylib$|/xash$'
         for f in libEGL libGLESv2; do
-          unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/$f.framework/$f$" || { echo "missing ANGLE's $f.framework"; exit 1; }
+          # in Frameworks/: ANGLE's libEGL opens libGLESv2 from there
+          unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/Frameworks/$f.framework/$f$" || { echo "missing ANGLE's Frameworks/$f.framework"; exit 1; }
         done
         unzip -l "artifacts/$IPA_NAME" | grep -q "xash3d.app/libref_gles3compat" || { echo "missing the gles3compat renderer"; exit 1; }
         for d in valve gearbox bshift; do

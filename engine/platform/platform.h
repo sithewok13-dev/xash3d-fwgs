@@ -60,6 +60,8 @@ void IOS_LaunchDialog( void );
 void IOS_SwitchDialog( void ) NORETURN; // after a game: the next one, then the app closes
 void IOS_RelaunchReset( void ); // our state, before the engine runs again
 void IOS_Trace( const char *fmt, ... ) FORMAT_CHECK( 1 ); // Documents/xash-trace.txt
+int IOS_TraceFd( void ); // its file, for the crash handler (-1: not open)
+const char *IOS_BuildNumber( void ); // SWBuildNumber from Info.plist (CI's run number), or "dev"
 void IOSTouch_Detach( void ); // before the engine's window closes
 void Host_ResetForRelaunch( void );
 void IOS_GetWindowInsets( void *window, float insets[4] );
@@ -86,6 +88,7 @@ qboolean IOS_Angle_CreateContext( void *window ); // false: logged, never tried 
 void IOS_Angle_DeleteContext( void );
 qboolean IOS_Angle_Active( void );
 void IOS_Angle_SwapBuffers( void );
+void IOS_Angle_FrameShown( void ); // after every swap: clears the crash guard (ios_angle.c)
 void *IOS_Angle_GetProcAddress( const char *name );
 int IOS_Angle_SetSwapInterval( int interval );
 int IOS_Angle_GetAttribute( int attr, int *val );

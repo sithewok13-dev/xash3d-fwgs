@@ -692,6 +692,11 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 	SetBits( flags, SDL_WINDOW_ALLOW_HIGHDPI );
 #endif // !XASH_WIN32
 
+#if XASH_IOS
+	IOS_Trace( "video: window %dx%d, %s", input_width, input_height,
+		use_angle ? "Metal view for ANGLE" : glw_state.software ? "software" : "Apple's OpenGL ES" );
+#endif
+
 	if( use_angle )
 	{
 #if !XASH_ANGLE_RIG // (on Linux, EGL draws on the plain X11 window)
@@ -710,9 +715,15 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 
 	if( !host.hWnd )
 	{
+#if XASH_IOS
+		IOS_Trace( "video: SDL_CreateWindow failed: %s", SDL_GetError( ));
+#endif
 		err = glw_state.software ? rserr_unknown : rserr_invalid_context;
 		goto cleanup;
 	}
+#if XASH_IOS
+	IOS_Trace( "video: window created" );
+#endif
 
 	SDL_SetWindowMinimumSize( host.hWnd, VID_MIN_WIDTH, VID_MIN_HEIGHT );
 
@@ -761,6 +772,9 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 			goto cleanup;
 		}
 		Con_Printf( "Video: OpenGL ES 3.0 on Metal (ANGLE)\n" );
+#if XASH_IOS
+		IOS_Trace( "video: OpenGL ES 3.0 on Metal (ANGLE)" );
+#endif
 	}
 #endif
 	else
@@ -769,6 +783,9 @@ static rserr_t VID_CreateWindow( const int input_width, const int input_height, 
 		Con_Printf( "Video: Apple's OpenGL ES\n" );
 #endif
 		glw_state.context = SDL_GL_CreateContext( host.hWnd );
+#if XASH_IOS
+		IOS_Trace( "video: Apple's OpenGL ES context %s", glw_state.context ? "made" : SDL_GetError( ));
+#endif
 
 		if( !glw_state.context )
 		{
@@ -855,6 +872,7 @@ void GL_SwapBuffers( void )
 {
 #if XASH_IOS_ANGLE
 	double start = Platform_DoubleTime( );
+	static void *traced; // the first frame of each window, in the trace
 
 	if( IOS_Angle_Active( ))
 		IOS_Angle_SwapBuffers( );
@@ -862,6 +880,15 @@ void GL_SwapBuffers( void )
 		SDL_GL_SwapWindow( host.hWnd );
 
 	IOS_PerfAddPresent( Platform_DoubleTime( ) - start );
+	IOS_Angle_FrameShown( );
+
+	if( traced != host.hWnd )
+	{
+		traced = host.hWnd;
+#if XASH_IOS
+		IOS_Trace( "first frame shown (%s)", IOS_Angle_Active( ) ? "ANGLE" : "Apple's OpenGL ES" );
+#endif
+	}
 #else
 	SDL_GL_SwapWindow( host.hWnd );
 #endif
@@ -1008,6 +1035,9 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 		// Apple's OpenGL ES) takes over.
 		if( IOS_Angle_Wanted( ))
 		{
+#if XASH_IOS
+			IOS_Trace( "video: the renderer wants OpenGL ES 3: ANGLE" );
+#endif
 			if( IOS_Angle_Load( ))
 				break;
 			Con_Printf( S_ERROR "ANGLE isn't available, falling back to Apple's OpenGL ES\n" );
@@ -1027,13 +1057,24 @@ qboolean R_Init_Video( ref_graphic_apis_t type )
 	}
 
 	if( !VID_SetMode( ))
+	{
+#if XASH_IOS
+		IOS_Trace( "video: no video mode" );
+#endif
 		return false;
+	}
 
 	switch( type )
 	{
 	case REF_GL:
 		// refdll also can check extensions
+#if XASH_IOS
+		IOS_Trace( "video: the renderer's OpenGL extensions" );
+#endif
 		ref.dllFuncs.GL_InitExtensions();
+#if XASH_IOS
+		IOS_Trace( "video: ready" );
+#endif
 		break;
 	case REF_SOFTWARE:
 	default:

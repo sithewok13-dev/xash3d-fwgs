@@ -103,7 +103,9 @@ Graphics: the `gles3compat` renderer on OpenGL ES 3.0 through ANGLE's Metal back
 (`engine/platform/ios/ios_angle.c`: an EGL surface on SDL's Metal view), not Apple's
 deprecated OpenGL ES. The workflow's `angle` job builds ANGLE (`ANGLE_REV`, built for
 iOS 18 and newer) and caches it; the IPA carries `libEGL.framework` and
-`libGLESv2.framework` next to `SDL2.framework`. The engine opens them at run time:
+`libGLESv2.framework` in the app's `Frameworks` folder (ANGLE's libEGL opens
+libGLESv2 from there itself; build 81 had them next to `SDL2.framework`, and the
+app closed at start). The engine opens them at run time:
 when they can't load or start (an older iOS, no Metal), the `gles1` renderer draws on
 Apple's OpenGL ES as before. `-ref gles1` in the launcher's command line picks that on
 purpose. `engine.log` says which runs (`Video: ...`, `ANGLE: ...`), and every 5 s of
@@ -111,6 +113,16 @@ play logs a frame-time line (`ios_perf.c`): `iOS: frames 120.0 fps; per frame 6.
 (worst 9.0): game 2.0, drawing 3.5, present 0.6; ANGLE (Metal)` (game = the engine's
 own work, drawing = the renderer handing the GPU its work, present = the swap, which
 waits when the GPU or the screen is behind).
+
+Crash guard: before ANGLE is first tried, `Library/xash-angle-guard.txt` is written
+("build N", Info.plist's `SWBuildNumber`); it goes once 30 frames have been shown
+through ANGLE, or when ANGLE gives up cleanly. Found at the next launch, that build
+uses Apple's OpenGL ES from then on (`ANGLE failed last time, using Apple GLES` in
+`engine.log` and the trace); a new build tries ANGLE again. `xash-trace.txt` follows
+video start step by step (renderer, `dlopen` results, EGL display, config, surface,
+context, the first frame shown), and says how the app went: `crash: signal N` (written
+with `write()` alone, first thing in the crash handler; SIGTRAP, SIGFPE and SIGSYS are
+caught too), an uncaught Objective-C exception with its stack, or `exit() called`.
 
 Numbered releases: a manual run of master with `release=<tag>`
 (`gh workflow run ios-trilogy.yml --ref master -f release=ios-v0.1-beta1`, or the REST

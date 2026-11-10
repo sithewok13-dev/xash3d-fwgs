@@ -8,7 +8,11 @@ made here: an EGL surface on SDL's Metal view. SDL still owns the window,
 the events, the sound and the controllers. vid_sdl2.c uses this when the
 renderer asks for OpenGL ES 2 or newer (ref_gles3compat) and ANGLE starts.
 
-ANGLE is the app's own libEGL and libGLESv2 frameworks, opened at run time:
+ANGLE is the app's own libEGL and libGLESv2 frameworks, opened at run time
+from the app's Frameworks folder. They must be there: on iOS, ANGLE's libEGL
+opens libGLESv2 itself from <app>/Frameworks/libGLESv2.framework, and when it
+can't, its egl* calls jump to NULL (build 81 had them at the app's top level
+and closed at start).
 if they are missing or can't start (an iOS older than they were built for,
 no Metal), nothing here is tried again for the rest of the launch: that
 renderer fails to start and the next one draws, ref_gles1 on Apple's OpenGL
@@ -35,6 +39,8 @@ GNU General Public License for more details.
 #include "ref_api.h"
 #include <dlfcn.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #if XASH_ANGLE_RIG
 #include <SDL_syswm.h>
@@ -133,9 +139,109 @@ static struct
 	int interval;
 } angle;
 
+// each step also to Documents/xash-trace.txt, which survives a crash
+#if XASH_IOS
+#define ANGLE_TRACE( ... ) IOS_Trace( __VA_ARGS__ )
+#else
+#define ANGLE_TRACE( ... ) Con_Printf( "trace: " __VA_ARGS__ ), Con_Printf( "\n" )
+#endif
+
 static void IOS_AngleFail( const char *what )
 {
-	Con_Printf( S_ERROR "ANGLE: %s (EGL error 0x%04x)\n", what, angle.GetError ? (unsigned)angle.GetError( ) : 0u );
+	unsigned err = angle.GetError ? (unsigned)angle.GetError( ) : 0u;
+
+	Con_Printf( S_ERROR "ANGLE: %s (EGL error 0x%04x)\n", what, err );
+	ANGLE_TRACE( "ANGLE: %s (EGL error 0x%04x)", what, err );
+}
+
+/*
+==============================================================================
+
+Crash guard. A marker file is written before ANGLE is first tried and
+removed once a few frames have been shown through it (or when ANGLE gives up
+cleanly and Apple's OpenGL ES takes over). A marker found at launch means
+the launch before died while ANGLE was starting: this build then uses Apple's
+OpenGL ES at every launch, and a new build (another SWBuildNumber) tries
+ANGLE again.
+
+==============================================================================
+*/
+#define ANGLE_GUARD_FRAMES 30 // half a second or so of the menu
+
+static int angle_guard_frames = -1; // frames still to show before the marker goes; -1: none
+
+static void IOS_AngleGuardPath( char *path, size_t size )
+{
+	const char *home = getenv( "HOME" );
+
+	Q_snprintf( path, size, "%s/Library/xash-angle-guard.txt", COM_StringEmptyOrNULL( home ) ? "." : home );
+}
+
+static const char *IOS_AngleBuildKey( void )
+{
+#if XASH_IOS
+	return IOS_BuildNumber( );
+#else
+	return "rig";
+#endif
+}
+
+// true: the launch before this died starting ANGLE in this build
+static qboolean IOS_AngleGuardTripped( void )
+{
+	char path[MAX_SYSPATH], text[64], key[64];
+	int fd, len;
+
+	IOS_AngleGuardPath( path, sizeof( path ));
+	fd = open( path, O_RDONLY );
+	if( fd < 0 )
+		return false;
+
+	len = read( fd, text, sizeof( text ) - 1 );
+	close( fd );
+	text[len > 0 ? len : 0] = 0;
+
+	Q_snprintf( key, sizeof( key ), "build %s", IOS_AngleBuildKey( ));
+	if( !Q_strcmp( text, key ))
+		return true;
+
+	// a new build: ANGLE gets another go
+	ANGLE_TRACE( "ANGLE: the last ANGLE failure was in another build (%s), trying ANGLE again", text );
+	unlink( path );
+	return false;
+}
+
+static void IOS_AngleGuardSet( void )
+{
+	char path[MAX_SYSPATH], key[64];
+	int fd;
+
+	IOS_AngleGuardPath( path, sizeof( path ));
+	Q_snprintf( key, sizeof( key ), "build %s", IOS_AngleBuildKey( ));
+
+	fd = open( path, O_WRONLY | O_CREAT | O_TRUNC, 0644 );
+	if( fd < 0 )
+	{
+		ANGLE_TRACE( "ANGLE: can't write the crash guard %s", path );
+		return;
+	}
+	if( write( fd, key, Q_strlen( key )) > 0 )
+		fsync( fd );
+	close( fd );
+	angle_guard_frames = ANGLE_GUARD_FRAMES;
+}
+
+static void IOS_AngleGuardClear( const char *why )
+{
+	char path[MAX_SYSPATH];
+
+	if( angle_guard_frames < 0 )
+		return;
+
+	IOS_AngleGuardPath( path, sizeof( path ));
+	unlink( path );
+	angle_guard_frames = -1;
+	ANGLE_TRACE( "ANGLE: crash guard cleared (%s)", why );
 }
 
 static void *IOS_AngleOpen( const char *name )
@@ -147,12 +253,20 @@ static void *IOS_AngleOpen( const char *name )
 	Q_strncpy( path, name, sizeof( path ));
 #else
 	// the frameworks sit next to SDL2.framework in the app (scripts/ios/createipa.sh)
-	Q_snprintf( path, sizeof( path ), "%s/%s.framework/%s", IOS_GetExecDir( ), name, name );
+	// the app's Frameworks folder: libEGL opens libGLESv2 from there itself
+	Q_snprintf( path, sizeof( path ), "%s/Frameworks/%s.framework/%s", IOS_GetExecDir( ), name, name );
 #endif
 
+	ANGLE_TRACE( "ANGLE: dlopen %s", path );
 	lib = dlopen( path, RTLD_NOW | RTLD_LOCAL );
 	if( !lib )
-		Con_Printf( "ANGLE: can't load %s: %s\n", name, dlerror( ));
+	{
+		const char *err = dlerror( );
+
+		Con_Printf( "ANGLE: can't load %s: %s\n", name, err ? err : "?" );
+		ANGLE_TRACE( "ANGLE: dlopen %s failed: %s", name, err ? err : "?" );
+	}
+	else ANGLE_TRACE( "ANGLE: dlopen %s ok", name );
 	return lib;
 }
 
@@ -164,6 +278,16 @@ qboolean IOS_Angle_Load( void )
 	angle.tried = true;
 	angle.broken = true;
 
+	if( IOS_AngleGuardTripped( ))
+	{
+		Con_Printf( S_WARN "ANGLE failed last time, using Apple GLES\n" );
+		ANGLE_TRACE( "ANGLE failed last time, using Apple GLES (until a new build)" );
+		return false;
+	}
+
+	// cleared after a few frames, or when ANGLE gives up cleanly
+	IOS_AngleGuardSet( );
+
 #if XASH_ANGLE_RIG
 	// libGLESv2 first: libEGL finds it among the loaded libraries
 	angle.gles_lib = IOS_AngleOpen( "libGLESv2.so.2" );
@@ -173,12 +297,29 @@ qboolean IOS_Angle_Load( void )
 	angle.egl_lib = angle.gles_lib ? IOS_AngleOpen( "libEGL" ) : NULL;
 #endif
 	if( !angle.egl_lib )
+	{
+		IOS_AngleGuardClear( "ANGLE didn't load" );
 		return false;
+	}
+
+#if !XASH_ANGLE_RIG
+	// what libEGL takes from libGLESv2 when its egl* calls first run: missing,
+	// they would jump to NULL
+	if( !dlsym( angle.gles_lib, "EGL_GetProcAddress" ) || !dlsym( angle.gles_lib, "EGL_Initialize" ))
+	{
+		Con_Printf( "ANGLE: libGLESv2 has no EGL entry points\n" );
+		ANGLE_TRACE( "ANGLE: libGLESv2 has no EGL entry points" );
+		IOS_AngleGuardClear( "ANGLE incomplete" );
+		return false;
+	}
+#endif
 
 #define EGL_FUNC( name ) \
 	if( !( angle.name = (egl##name##_t)dlsym( angle.egl_lib, "egl" #name ))) \
 	{ \
 		Con_Printf( "ANGLE: libEGL has no egl" #name "\n" ); \
+		ANGLE_TRACE( "ANGLE: libEGL has no egl" #name ); \
+		IOS_AngleGuardClear( "ANGLE incomplete" ); \
 		return false; \
 	}
 	EGL_FUNC( GetProcAddress )
@@ -199,6 +340,7 @@ qboolean IOS_Angle_Load( void )
 	EGL_FUNC( QueryString )
 #undef EGL_FUNC
 
+	ANGLE_TRACE( "ANGLE: loaded" );
 	angle.broken = false;
 	return true;
 }
@@ -307,6 +449,8 @@ qboolean IOS_Angle_CreateContext( void *window )
 	if( !IOS_Angle_Load( ))
 		return false;
 
+	ANGLE_TRACE( "ANGLE: creating the context" );
+
 #if XASH_ANGLE_RIG
 	SDL_SysWMinfo info;
 
@@ -324,6 +468,7 @@ qboolean IOS_Angle_CreateContext( void *window )
 	// SDL's Metal view is backed by a CAMetalLayer sized for the window;
 	// ANGLE draws straight into that layer
 	angle.view = SDL_Metal_CreateView( window );
+	ANGLE_TRACE( "ANGLE: SDL_Metal_CreateView %p", angle.view );
 	if( !angle.view )
 	{
 		Con_Printf( S_ERROR "ANGLE: SDL_Metal_CreateView: %s\n", SDL_GetError( ));
@@ -331,6 +476,7 @@ qboolean IOS_Angle_CreateContext( void *window )
 	}
 
 	native = SDL_Metal_GetLayer( angle.view );
+	ANGLE_TRACE( "ANGLE: SDL_Metal_GetLayer %p", native );
 	if( !native )
 	{
 		Con_Printf( S_ERROR "ANGLE: SDL_Metal_GetLayer: %s\n", SDL_GetError( ));
@@ -338,11 +484,14 @@ qboolean IOS_Angle_CreateContext( void *window )
 	}
 
 	// Metal by name, rather than whatever ANGLE takes by default
+	ANGLE_TRACE( "ANGLE: eglGetProcAddress( eglGetPlatformDisplayEXT )" );
 	getplatformdisplay = (eglGetPlatformDisplayEXT_t)angle.GetProcAddress( "eglGetPlatformDisplayEXT" );
+	ANGLE_TRACE( "ANGLE: eglGetPlatformDisplayEXT %p", getplatformdisplay );
 	if( getplatformdisplay )
 	{
 		const EGLint attribs[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
 		angle.display = getplatformdisplay( EGL_PLATFORM_ANGLE_ANGLE, NULL, attribs );
+		ANGLE_TRACE( "ANGLE: Metal display %p", angle.display );
 	}
 	if( angle.display == EGL_NO_DISPLAY )
 	{
@@ -351,13 +500,19 @@ qboolean IOS_Angle_CreateContext( void *window )
 	}
 #endif
 
+	ANGLE_TRACE( "ANGLE: eglInitialize" );
 	if( angle.display == EGL_NO_DISPLAY || !angle.Initialize( angle.display, &major, &minor ))
 	{
 		IOS_AngleFail( "eglInitialize failed" );
 		angle.display = EGL_NO_DISPLAY;
 		goto fail;
 	}
-	Con_Printf( "ANGLE: EGL %d.%d, %s\n", major, minor, angle.QueryString( angle.display, EGL_VENDOR ));
+	{
+		const char *vendor = angle.QueryString( angle.display, EGL_VENDOR );
+
+		Con_Printf( "ANGLE: EGL %d.%d, %s\n", major, minor, vendor );
+		ANGLE_TRACE( "ANGLE: EGL %d.%d, %s", major, minor, vendor ? vendor : "?" );
+	}
 
 	angle.BindAPI( EGL_OPENGL_ES_API );
 
@@ -366,6 +521,8 @@ qboolean IOS_Angle_CreateContext( void *window )
 		IOS_AngleFail( "no OpenGL ES 3 config" );
 		goto fail;
 	}
+	ANGLE_TRACE( "ANGLE: config %d%d%d%d, depth %d, stencil %d, MSAA %d",
+		angle.red, angle.green, angle.blue, angle.alpha, angle.depth, angle.stencil, angle.samples );
 
 	angle.surface = angle.CreateWindowSurface( angle.display, config, native, NULL );
 	if( angle.surface == EGL_NO_SURFACE )
@@ -373,6 +530,7 @@ qboolean IOS_Angle_CreateContext( void *window )
 		IOS_AngleFail( "eglCreateWindowSurface failed" );
 		goto fail;
 	}
+	ANGLE_TRACE( "ANGLE: surface %p", angle.surface );
 
 	{
 		const EGLint attribs[] = { EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, 0, EGL_NONE };
@@ -383,12 +541,14 @@ qboolean IOS_Angle_CreateContext( void *window )
 		IOS_AngleFail( "eglCreateContext (OpenGL ES 3.0) failed" );
 		goto fail;
 	}
+	ANGLE_TRACE( "ANGLE: context %p", angle.context );
 
 	if( !angle.MakeCurrent( angle.display, angle.surface, angle.surface, angle.context ))
 	{
 		IOS_AngleFail( "eglMakeCurrent failed" );
 		goto fail;
 	}
+	ANGLE_TRACE( "ANGLE: context current" );
 
 	angle.SwapInterval( angle.display, angle.interval );
 
@@ -397,16 +557,25 @@ qboolean IOS_Angle_CreateContext( void *window )
 		getstring ? (const char *)getstring( GL_RENDERER ) : "?",
 		getstring ? (const char *)getstring( GL_VERSION ) : "?",
 		angle.red, angle.green, angle.blue, angle.alpha, angle.depth, angle.stencil, angle.samples );
+	ANGLE_TRACE( "ANGLE: %s, %s",
+		getstring ? (const char *)getstring( GL_RENDERER ) : "?",
+		getstring ? (const char *)getstring( GL_VERSION ) : "?" );
 	return true;
 
 fail:
 	IOS_Angle_DeleteContext( );
 	angle.broken = true;
+	IOS_AngleGuardClear( "ANGLE didn't start" );
 	return false;
 }
 
 void IOS_Angle_DeleteContext( void )
 {
+	// a context closed without a crash: ANGLE is fine (a renderer that gave
+	// up on it, or a shutdown before the guard's frames)
+	if( angle.context != EGL_NO_CONTEXT )
+		IOS_AngleGuardClear( "ANGLE context closed" );
+
 	if( angle.display != EGL_NO_DISPLAY )
 	{
 		angle.MakeCurrent( angle.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT );
@@ -431,8 +600,17 @@ void IOS_Angle_DeleteContext( void )
 
 void IOS_Angle_SwapBuffers( void )
 {
-	if( angle.surface != EGL_NO_SURFACE )
-		angle.SwapBuffers( angle.display, angle.surface );
+	if( angle.surface == EGL_NO_SURFACE )
+		return;
+
+	angle.SwapBuffers( angle.display, angle.surface );
+}
+
+void IOS_Angle_FrameShown( void )
+{
+	// any renderer's: frames shown after ANGLE was tried, so it didn't kill us
+	if( angle_guard_frames > 0 && --angle_guard_frames == 0 )
+		IOS_AngleGuardClear( IOS_Angle_Active( ) ? "frames shown through ANGLE" : "frames shown, ANGLE not in use" );
 }
 
 void *IOS_Angle_GetProcAddress( const char *name )

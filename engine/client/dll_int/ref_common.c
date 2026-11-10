@@ -557,10 +557,16 @@ static qboolean R_LoadProgs( const char *name )
 	{
 		FS_AllowDirectPaths( false );
 		Con_Reportf( "%s: can't load renderer library %s: %s\n", __func__, name, COM_GetLibraryError() );
+#if XASH_IOS
+		IOS_Trace( "renderer library %s didn't load: %s", name, COM_GetLibraryError( ));
+#endif
 		return false;
 	}
 
 	FS_AllowDirectPaths( false );
+#if XASH_IOS
+	IOS_Trace( "renderer library %s loaded, starting it (video)", name );
+#endif
 
 	if( !( GetRefAPI = (REFAPI)COM_GetProcAddress( ref.hInstance, GET_REF_API )))
 	{
@@ -646,9 +652,15 @@ static qboolean R_LoadRenderer( const char *refopt, qboolean quiet )
 	R_GetRendererName( refdll, sizeof( refdll ), refopt );
 
 	Con_Printf( "Loading renderer: %s -> %s\n", refopt, refdll );
+#if XASH_IOS
+	IOS_Trace( "renderer: %s (%s)", refopt, refdll );
+#endif
 
 	if( !R_LoadProgs( refdll ))
 	{
+#if XASH_IOS
+		IOS_Trace( "renderer %s didn't start", refopt );
+#endif
 		R_Shutdown();
 		if( !quiet )
 			Sys_Warn( S_ERROR "Can't initialize %s renderer!\n", refdll );
@@ -657,6 +669,9 @@ static qboolean R_LoadRenderer( const char *refopt, qboolean quiet )
 
 	Cvar_FullSet( "r_refdll_loaded", refopt, FCVAR_READ_ONLY );
 	Con_Reportf( "Renderer %s initialized\n", refdll );
+#if XASH_IOS
+	IOS_Trace( "renderer %s started", refopt );
+#endif
 
 	return true;
 }

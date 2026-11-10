@@ -30,6 +30,44 @@ GNU General Public License for more details.
 #include "launcher_menu.h"
 
 const char *IOS_GetDocsDir( void );
+void IOS_Trace( const char *fmt, ... ) __attribute__(( format( printf, 1, 2 )));
+
+// SWBuildNumber (CI's run number), or "dev": keys the ANGLE crash guard
+const char *IOS_BuildNumber( void )
+{
+	static char number[32];
+
+	if( !number[0] )
+	{
+		id num = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"SWBuildNumber"];
+
+		if( [num isKindOfClass:[NSNumber class]] )
+			num = [num stringValue];
+		snprintf( number, sizeof( number ), "%s",
+			[num isKindOfClass:[NSString class]] && [num length] ? [num UTF8String] : "dev" );
+	}
+	return number;
+}
+
+// An Objective-C exception nobody catches: its name, reason and stack to
+// Documents/xash-trace.txt before the app goes (the abort after it is the
+// crash handler's)
+static NSUncaughtExceptionHandler *previous_exception_handler;
+
+static void IOS_UncaughtException( NSException *e )
+{
+	IOS_Trace( "uncaught Objective-C exception %s: %s\n%s", [[e name] UTF8String],
+		[[e reason] UTF8String] ? [[e reason] UTF8String] : "",
+		[[[e callStackSymbols] componentsJoinedByString:@"\n"] UTF8String] );
+	if( previous_exception_handler )
+		previous_exception_handler( e );
+}
+
+__attribute__(( constructor )) static void IOS_InstallExceptionHandler( void )
+{
+	previous_exception_handler = NSGetUncaughtExceptionHandler( );
+	NSSetUncaughtExceptionHandler( IOS_UncaughtException );
+}
 
 NSString *IOS_BuildStamp( void )
 {

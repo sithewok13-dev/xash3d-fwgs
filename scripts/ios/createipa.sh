@@ -26,15 +26,17 @@ if [ -d "$BUILDDIR" ]; then
     fi
     cp -r "$BUILDDIR/SDL2.framework" "$BUILDDIR/ios/xash3d.app"
     # ANGLE (OpenGL ES on Metal): engine/platform/ios/ios_angle.c opens its
-    # frameworks from here at run time; without them the app draws with
-    # Apple's OpenGL ES as before
+    # frameworks at run time; without them the app draws with Apple's OpenGL
+    # ES as before. They must be in the app's Frameworks folder: ANGLE's
+    # libEGL opens <app>/Frameworks/libGLESv2.framework/libGLESv2 itself.
     if [ -n "$ANGLE_ROOT" ]; then
+        mkdir -p "$BUILDDIR/ios/xash3d.app/Frameworks"
         for f in libGLESv2 libEGL; do
             if [ ! -f "$ANGLE_ROOT/out/ios/$f.framework/$f" ]; then
                 echo "ANGLE_ROOT is set but $ANGLE_ROOT/out/ios/$f.framework is missing"
                 exit 1
             fi
-            cp -R "$ANGLE_ROOT/out/ios/$f.framework" "$BUILDDIR/ios/xash3d.app/"
+            cp -R "$ANGLE_ROOT/out/ios/$f.framework" "$BUILDDIR/ios/xash3d.app/Frameworks/"
         done
     else
         echo "ANGLE_ROOT isn't set: no ANGLE in the app (Apple's OpenGL ES only)"
@@ -57,8 +59,8 @@ if [ -d "$BUILDDIR" ]; then
     cd ios || exit 1
     # nested code first: the app's signature covers theirs
     for f in libGLESv2 libEGL; do
-        if [ -d "Payload/xash3d.app/$f.framework" ]; then
-            codesign --force --sign "-" --timestamp=none "Payload/xash3d.app/$f.framework" || exit 1
+        if [ -d "Payload/xash3d.app/Frameworks/$f.framework" ]; then
+            codesign --force --sign "-" --timestamp=none "Payload/xash3d.app/Frameworks/$f.framework" || exit 1
         fi
     done
     codesign --entitlements "$(realpath ../../engine/platform/ios/bundle/entitlements.plist)" --sign "-" --force Payload/xash3d.app

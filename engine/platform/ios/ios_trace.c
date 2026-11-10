@@ -23,10 +23,23 @@ GNU General Public License for more details.
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <stdlib.h>
+
+static int fd = -1;
+
+int IOS_TraceFd( void )
+{
+	return fd;
+}
+
+// exit() from anywhere (not a crash, not the engine's own shutdown): said so
+static void IOS_TraceExit( void )
+{
+	IOS_Trace( "exit() called" );
+}
 
 void IOS_Trace( const char *fmt, ... )
 {
-	static int fd = -1;
 	char line[4096];
 	va_list args;
 	int len;
@@ -44,6 +57,7 @@ void IOS_Trace( const char *fmt, ... )
 		fd = open( path, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0644 );
 		if( fd < 0 )
 			return;
+		atexit( IOS_TraceExit );
 	}
 
 	time_t now = time( NULL );
