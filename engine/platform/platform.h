@@ -87,6 +87,7 @@ qboolean IOS_Angle_Load( void ); // false: ANGLE is missing or broken (logged)
 qboolean IOS_Angle_CreateContext( void *window ); // false: logged, never tried again
 void IOS_Angle_DeleteContext( void );
 qboolean IOS_Angle_Active( void );
+qboolean IOS_Angle_FellBack( void ); // the crash guard chose Apple's OpenGL ES this launch
 void IOS_Angle_SwapBuffers( void );
 void IOS_Angle_FrameShown( void ); // after every swap: clears the crash guard (ios_angle.c)
 void *IOS_Angle_GetProcAddress( const char *name );

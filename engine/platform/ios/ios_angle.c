@@ -169,6 +169,7 @@ ANGLE again.
 #define ANGLE_GUARD_FRAMES 30 // half a second or so of the menu
 
 static int angle_guard_frames = -1; // frames still to show before the marker goes; -1: none
+static qboolean angle_fell_back; // this launch: the guard sent us to Apple's OpenGL ES
 
 static void IOS_AngleGuardPath( char *path, size_t size )
 {
@@ -282,6 +283,7 @@ qboolean IOS_Angle_Load( void )
 	{
 		Con_Printf( S_WARN "ANGLE failed last time, using Apple GLES\n" );
 		ANGLE_TRACE( "ANGLE failed last time, using Apple GLES (until a new build)" );
+		angle_fell_back = true;
 		return false;
 	}
 
@@ -377,6 +379,11 @@ qboolean IOS_Angle_Wanted( void )
 qboolean IOS_Angle_Active( void )
 {
 	return angle.context != EGL_NO_CONTEXT;
+}
+
+qboolean IOS_Angle_FellBack( void )
+{
+	return angle_fell_back;
 }
 
 static EGLConfig IOS_AngleChooseConfig( void )

@@ -34,6 +34,10 @@ GNU General Public License for more details.
 #include "ios_touch.h"
 #include "launcher_menu.h"
 
+// which graphics draw (ios_angle.c): for the build stamp under the tray
+int IOS_Angle_Active( void );
+int IOS_Angle_FellBack( void );
+
 // Look speed: degrees of view turn per point of finger travel (the same turn
 // as the Jedi Knight port at its default mouse settings), times SENS
 #define IOSTOUCH_LOOK_DEG_X 0.64f
@@ -1004,6 +1008,10 @@ static CGFloat ButtonAlpha( int i, int on )
 
 	// the build stamp, centred under the tray's shown buttons
 	tray_version.hidden = !tray_open || seq != SEQ_NONE || freezing;
+	// and which graphics draw: "build 82 · Nov 10 · Metal" (OpenGL ES 3 on
+	// ANGLE) or "· old GL" (Apple's OpenGL ES)
+	if( !tray_version.hidden )
+		tray_version.text = [NSString stringWithFormat:@"%@ \u00B7 %@", IOS_BuildStamp(), IOS_Angle_Active() ? @"Metal" : @"old GL"];
 	[tray_version sizeToFit];
 	tray_version.center = CGPointMake( btn_pos[BTN_MENU].x - ( n - 1 ) * IOSTOUCH_TRAY_STEP / 2,
 		top + IOSTOUCH_TRAY_DROP + 30 );
@@ -3006,6 +3014,17 @@ void IOSTouch_Frame( void *window, int ingame )
 				if( overlay.hidden )
 					overlay.alpha = 0.0;
 				overlay.hidden = NO;
+
+				// once, the first time in game: the crash guard chose the old graphics
+				{
+					static int fallback_told;
+
+					if( !fallback_told && IOS_Angle_FellBack( ))
+					{
+						fallback_told = 1;
+						[overlay showToast:@"New graphics failed last time: using the old ones"];
+					}
+				}
 				[UIView animateWithDuration:IOSTOUCH_SHOW_TIME delay:0 options:UIViewAnimationOptionBeginFromCurrentState
 					animations:^{ overlay.alpha = 1.0; } completion:nil];
 			}

@@ -118,7 +118,10 @@ Crash guard: before ANGLE is first tried, `Library/xash-angle-guard.txt` is writ
 ("build N", Info.plist's `SWBuildNumber`); it goes once 30 frames have been shown
 through ANGLE, or when ANGLE gives up cleanly. Found at the next launch, that build
 uses Apple's OpenGL ES from then on (`ANGLE failed last time, using Apple GLES` in
-`engine.log` and the trace); a new build tries ANGLE again. `xash-trace.txt` follows
+`engine.log` and the trace, and once in game the toast "New graphics failed last time:
+using the old ones"); a new build tries ANGLE again. The build stamp under MENU's tray
+ends with the graphics in use: `build 82 · Nov 10 · Metal` (ANGLE) or `· old GL`
+(Apple's OpenGL ES); the launcher's stamp has none (no renderer yet). `xash-trace.txt` follows
 video start step by step (renderer, `dlopen` results, EGL display, config, surface,
 context, the first frame shown), and says how the app went: `crash: signal N` (written
 with `write()` alone, first thing in the crash handler; SIGTRAP, SIGFPE and SIGSYS are
