@@ -66,7 +66,7 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   1.25, 1.5, 2x; hold for 1x), RUN, OPACITY (tap: a slider, 20-100% in 5% steps; hold:
   100%), FPS (tap shows/hides the overlay's readout, 13 pt
   "60 FPS" under SAVE and LOAD, hidden while the tray is open; the engine's tiny
-  `cl_showfps` text is kept off meanwhile; hold 0.45 s to switch 60 <-> 120 frames a
+  `cl_showfps` text in the corner is always kept off; hold 0.45 s to switch 60 <-> 120 frames a
   second, default 60: the screen is asked for that rate and fps_max follows it), CAMERA (tap shows/hides the camera button; hold for CLEAN, HUD, HUD+BTNS,
   SELFIES 1/3/5, FREEZE), CHEAT, LEVEL, CTRL (NORMAL or SWAP sides), KEYS (console)
   and GAMES. Settings are remembered; the cheat starts off each launch. Under the tray,

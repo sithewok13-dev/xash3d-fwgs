@@ -124,8 +124,9 @@ void IOS_TouchFrame( void )
 			Con_Printf( "iOS: fps_max %d (MENU's tray: hold FPS for 60 or 120)\n", fps );
 		}
 	}
-	// the overlay's FPS readout replaces the engine's tiny one in the corner
-	if( IOSTouch_ShowFps( ) && Cvar_VariableValue( "cl_showfps" ) != 0.0f )
+	// the overlay's FPS readout (MENU's tray FPS) replaces the engine's tiny
+	// one, which the screen's rounded corner cuts off: it's never drawn
+	if( Cvar_VariableValue( "cl_showfps" ) != 0.0f )
 		Cvar_Set( "cl_showfps", "0" );
 
 	// a game running (not the menu's background map), or hosting one, menus
