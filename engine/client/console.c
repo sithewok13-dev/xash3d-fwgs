@@ -2553,6 +2553,12 @@ static int Con_DestHeight( void )
 	if( !host.allow_console || cls.key_dest != key_console )
 		return 0; // none visible
 
+#if XASH_IOS
+	// the typing line above the system keyboard, which covers about the
+	// lower half of a phone held sideways
+	return refState.height * 2 / 5;
+#endif
+
 	if( cls.state < ca_active || cl.first_frame )
 		return refState.height;	// full screen
 

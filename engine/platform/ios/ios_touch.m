@@ -238,7 +238,7 @@ static const button_def_t buttons[BTN_COUNT] =
 [BTN_TRAY_CHEAT] = { "CHEAT",       KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_TRAY_LEVEL] = { "LEVEL",       KIND_LEVEL,   0,                      20, 0, ROW_TRAY, IOSTOUCH_LEVEL_HOLD },
 [BTN_TRAY_CTRL] = { "CONTROLS",     KIND_TRAY,    0,                      20, 0, ROW_TRAY },
-[BTN_TRAY_KEYS] = { "KEYS",         KIND_TRAY,    IOSTOUCH_ACT_CONSOLE,   20, 0, ROW_TRAY },
+[BTN_TRAY_KEYS] = { "CONSOLE",      KIND_TRAY,    IOSTOUCH_ACT_CONSOLE,   20, 0, ROW_TRAY },
 [BTN_TRAY_GAMES] = { "GAMES",       KIND_TRAY,    0,                      20, 0, ROW_TRAY },
 [BTN_GYRO_MODE] = { "MODE",         KIND_TRAY,    0,                      20, 0, ROW_GYRO },
 [BTN_GYRO_SENS] = { "SENS",         KIND_TRAY,    0,                      20, 0, ROW_GYRO },
@@ -572,6 +572,7 @@ static void SaveGyro( void )
 - (void)showToast:(NSString *)text;
 - (void)setCheat:(int)on;
 - (void)confirmGames;
+- (void)closeConsole;
 - (void)updateShown;
 - (void)updateLabels;
 - (void)flash:(int)burst;
@@ -1082,6 +1083,12 @@ static CGFloat ButtonAlpha( int i, int on )
 }
 
 // GAMES: back to "Choose a game", after a word on what's lost
+// the console's CLOSE: toggleconsole closes it again
+- (void)closeConsole
+{
+	QueueAction( IOSTOUCH_ACT_CONSOLE );
+}
+
 - (void)confirmGames
 {
 	UIViewController *host = self.window.rootViewController;
@@ -1398,6 +1405,7 @@ static CGFloat ButtonAlpha( int i, int on )
 		[self updateShown];
 		break;
 	case BTN_TRAY_KEYS:
+		// the console, with the system keyboard (see Key_SetKeyDest)
 		[self closeTray];
 		QueueAction( IOSTOUCH_ACT_CONSOLE );
 		break;
@@ -2800,6 +2808,7 @@ static CFTimeInterval hide_grace_until;
 // taps land where they should, in the menus above all. A recognizer on
 // the window sees every touch without taking any from SDL or the buttons.
 static UIView *taps_view;
+static UIButton *console_close; // CLOSE, while the console is open
 
 @interface IOSTapProbe : UIGestureRecognizer <UIGestureRecognizerDelegate>
 @end
@@ -3032,7 +3041,7 @@ static void GyroFrame( void )
 	look_pitch -= pitch * gyro_sens[gyro_sens_i];
 }
 
-void IOSTouch_Frame( void *window, int ingame )
+void IOSTouch_Frame( void *window, int ingame, int console )
 {
 	@autoreleasepool
 	{
@@ -3076,6 +3085,32 @@ void IOSTouch_Frame( void *window, int ingame )
 		}
 		taps_view.frame = host.bounds;
 		[host bringSubviewToFront:taps_view];
+
+		// the console's way out: the system keyboard has no Escape
+		if( !console_close )
+		{
+			console_close = [[UIButton buttonWithType:UIButtonTypeSystem] retain];
+			[console_close setTitle:@"CLOSE" forState:UIControlStateNormal];
+			[console_close setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+			console_close.titleLabel.font = [UIFont boldSystemFontOfSize:15];
+			console_close.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.6];
+			console_close.layer.cornerRadius = 10;
+			console_close.layer.borderWidth = 1;
+			console_close.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.45].CGColor;
+			[console_close addTarget:overlay action:@selector( closeConsole ) forControlEvents:UIControlEventTouchUpInside];
+		}
+		if( console_close.superview != host )
+		{
+			[console_close removeFromSuperview];
+			[host addSubview:console_close];
+		}
+		console_close.hidden = !console;
+		if( console )
+		{
+			UIEdgeInsets in = [overlay insets];
+			console_close.frame = CGRectMake( host.bounds.size.width - in.right - 96, in.top + 8, 84, 40 );
+			[host bringSubviewToFront:console_close];
+		}
 
 		if( host.window && probed != host.window )
 		{
@@ -3241,6 +3276,7 @@ void IOSTouch_Detach( void )
 		overlay_shown = 0;
 		[overlay removeFromSuperview];
 		[taps_view removeFromSuperview];
+		[console_close removeFromSuperview];
 
 		for( UIGestureRecognizer *g in [[probed.gestureRecognizers copy] autorelease] )
 		{

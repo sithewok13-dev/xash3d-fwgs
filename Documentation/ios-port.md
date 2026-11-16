@@ -68,7 +68,7 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   "60 FPS" under SAVE and LOAD, hidden while the tray is open; the engine's tiny
   `cl_showfps` text in the corner is always kept off; hold 0.45 s to switch 60 <-> 120 frames a
   second, default 60: the screen is asked for that rate and fps_max follows it), CAMERA (tap shows/hides the camera button; hold for CLEAN, HUD, HUD+BTNS,
-  SELFIES 1/3/5, FREEZE), CHEAT, LEVEL, CTRL (NORMAL or SWAP sides), KEYS (console)
+  SELFIES 1/3/5, FREEZE), CHEAT, LEVEL, CTRL (NORMAL or SWAP sides), CONSOLE (with the keyboard; CLOSE at the top right)
   and GAMES. Settings are remembered; the cheat starts off each launch. Under the tray,
   small and grey, the build stamp, e.g. `build 123 · Nov 9` (the CI run that built it
   and its date, UTC; `build dev` for a local build), also on the game picker. TAPS (touch debugging marks) is off the tray: console `ios_taps`.

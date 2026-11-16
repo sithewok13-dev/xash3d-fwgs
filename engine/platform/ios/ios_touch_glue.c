@@ -112,7 +112,7 @@ void IOS_TouchFrame( void )
 	}
 
 	IOS_CheatFrame( );
-	IOSTouch_Frame( host.hWnd, ingame );
+	IOSTouch_Frame( host.hWnd, ingame, cls.key_dest == key_console );
 
 	// fps_max follows MENU's tray FPS (60 or 120), whatever a config says
 	{

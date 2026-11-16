@@ -53,7 +53,9 @@ enum
 // Once per engine frame. window is the SDL_Window; ingame says whether the
 // player is in a running game with nothing (menu, console) in front of it.
 // The overlay shows only then; otherwise touches go to SDL as mouse clicks.
-void IOSTouch_Frame( void *window, int ingame );
+// console: the console is open (a CLOSE button shows, as the system
+// keyboard has no Escape).
+void IOSTouch_Frame( void *window, int ingame, int console );
 
 // Bits (1 << IOSTOUCH_CMD_*) of the commands held right now
 unsigned int IOSTouch_HeldCommands( void );
