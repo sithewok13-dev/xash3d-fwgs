@@ -45,7 +45,7 @@ Where everything is (on a phone, turn it sideways to see the whole picture):
 ```
  NEXT  LIGHT          [camera]     λ       SAVE   LOAD   MENU
  WPN                                          60 FPS
-   [GYRO] [SENS] [RUN] [OPACITY] [FPS] [CAMERA] [CHEAT] [LEVEL] [CTRL] [KEYS] [GAMES]
+   [GYRO] [SENS] [RUN] [OPACITY] [FPS] [CAMERA] [CHEAT] [LEVEL] [CTRL] [CONSOLE] [GAMES]
                            (MENU's tray, while it's open)
                                                             RELOAD
                                                      JUMP
@@ -93,7 +93,7 @@ Exact positions shift a little to fit your screen; the buttons stay clear of the
 - **CHEAT:** switches the cheat on and shows its λ button; tapped again, the cheat goes off and the button goes away.
 - **LEVEL** (only while the cheat is on, in single player): the chapter list, see *The cheat*.
 - **CTRL:** NORMAL, or SWAP to mirror the FIRE cluster to the left of the screen.
-- **KEYS:** opens the console, with the keyboard.
+- **CONSOLE:** opens the console, with the keyboard. **CLOSE** at the top right closes it.
 - **GAMES:** *Switch game*, to play another of the games (see *Menus, switching games and the console*).
 
 All these settings are remembered, apart from the cheat itself, which starts off each time you open the app.
@@ -117,7 +117,7 @@ The **camera** button sits in the middle of the top row.
 
 #### The cheat (sithewok)
 
-- **Switch it on:** hold MENU and tap **CHEAT** in the tray, or open the console (KEYS) and type `sithewok`. It gives god mode and every weapon, and a gold **λ** button appears in the top row. **Hold λ** for half a second to switch the cheat off (grey) or on again (gold); a tap does nothing.
+- **Switch it on:** hold MENU and tap **CHEAT** in the tray, or open the console (CONSOLE) and type `sithewok`. It gives god mode and every weapon, and a gold **λ** button appears in the top row. **Hold λ** for half a second to switch the cheat off (grey) or on again (gold); a tap does nothing.
 - **While it's on:** **hold JUMP** still for half a second for **noclip** (fly through walls; **double-tap JUMP** to land), and **hold USE** still for half a second for **notarget** (enemies ignore you). Small labels under JUMP and USE show them. Both end at each new level; god mode stays on.
 - **LEVEL**, in the tray: tap it for a list of the game's chapters, numbered, each with its title and first map, the one you're playing ticked. The game holds still while it's open. Tap a chapter to start it (with the suit and all weapons); the X or a tap off the list closes it. Or hold LEVEL and it counts through the chapters: let go to start the one shown. Only chapters whose maps you have are listed.
 - **Single player only.** The cheat and LEVEL do nothing in a game with other players.
@@ -137,7 +137,7 @@ These have had the least testing of anything in the app.
 
 - **Choose a game** opens with the app. **Tap** a ready game to play it. *Options* (bottom right) takes extra engine command-line options, for experts.
 - **One game per launch.** To play another, tap **GAMES** in MENU's tray: pick the next game, and the game you're in ends (unsaved progress is lost) and the app closes. Tap the notification it shows, or open the app again within 10 minutes, and the game you picked starts. *Cancel* goes back to your game.
-- **The console:** **KEYS** in the tray opens it, with the keyboard.
+- **The console:** **CONSOLE** in the tray opens it, with the keyboard; **CLOSE** at the top right closes it.
 
 #### Small print
 
