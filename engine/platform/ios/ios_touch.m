@@ -2705,11 +2705,10 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			toast_until = 0;
 			break;
 		case KIND_CHEAT:
-			// a tap (a hold switches the cheat): its menu while it's on
+			// a tap (a hold switches the cheat): its menu while it's on,
+			// nothing while it's off
 			if( tap && cheat_on )
 				open_cheats = 1;
-			else if( tap )
-				[self showToast:@"Long press \u03BB to turn cheats on"];
 			break;
 		default:
 			break;
