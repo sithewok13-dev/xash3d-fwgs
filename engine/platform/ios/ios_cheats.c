@@ -107,6 +107,16 @@ static char saved_sv_cheats[16];
 static int cheat_servercount = -1;
 static qboolean give_on_load; // LEVEL's map starts with nothing: the suit and weapons
 
+// the cheat menu's slow motion and low gravity, with what they replaced
+static qboolean slowmo_on, lowgrav_on;
+static char saved_timescale[16], saved_gravity[16];
+#define IOS_SLOWMO_SCALE "0.5"
+#define IOS_LOWGRAV "200" // a quarter of the usual 800
+
+// read by the games' code (scripts/ios/patch_hlsdk.sh): while it's on, full
+// magazines and full spare ammo, so no weapon ever reloads or runs dry
+static CVAR_DEFINE_AUTO( ios_cheat_ammo, "0", 0, "iOS cheat: full magazines and ammo" );
+
 static edict_t *IOS_CheatPlayer( void )
 {
 	if( sv.state != ss_active || sv.background || svs.maxclients != 1 || !svs.clients )
@@ -245,6 +255,50 @@ int IOS_LevelCurrent( void )
 	return IOS_CheatAllowed( ) && current_chapter < num_chapters ? current_chapter : -1;
 }
 
+int IOS_CheatSlowmo( void )
+{
+	return slowmo_on;
+}
+
+int IOS_CheatLowgrav( void )
+{
+	return lowgrav_on;
+}
+
+// half speed, the whole game (as sys_timescale does)
+void IOS_CheatSetSlowmo( int on )
+{
+	if( on && ( !cheat_on || !IOS_CheatPlayer( )))
+		return;
+
+	if( on && !slowmo_on )
+	{
+		Q_strncpy( saved_timescale, Cvar_VariableString( "sys_timescale" ), sizeof( saved_timescale ));
+		Cvar_Set( "sys_timescale", IOS_SLOWMO_SCALE );
+	}
+	else if( !on && slowmo_on )
+		Cvar_Set( "sys_timescale", saved_timescale[0] ? saved_timescale : "1" );
+
+	slowmo_on = on;
+}
+
+// a quarter of the gravity, until the next level (whose world sets its own)
+void IOS_CheatSetLowgrav( int on )
+{
+	if( on && ( !cheat_on || !IOS_CheatPlayer( )))
+		return;
+
+	if( on && !lowgrav_on )
+	{
+		Q_strncpy( saved_gravity, Cvar_VariableString( "sv_gravity" ), sizeof( saved_gravity ));
+		Cvar_Set( "sv_gravity", IOS_LOWGRAV );
+	}
+	else if( !on && lowgrav_on )
+		Cvar_Set( "sv_gravity", saved_gravity[0] ? saved_gravity : "800" );
+
+	lowgrav_on = on;
+}
+
 // impulse 101's pickups would fill the right of the screen with every
 // weapon at once: the game's pickup list is off for a moment around it
 static char saved_history_time[16];
@@ -255,6 +309,7 @@ static void IOS_ApplyCheat( edict_t *ent, qboolean give )
 	if( !saved_sv_cheats[0] )
 		Q_strncpy( saved_sv_cheats, Cvar_VariableString( "sv_cheats" ), sizeof( saved_sv_cheats ));
 	Cvar_Set( "sv_cheats", "1" );
+	Cvar_Set( "ios_cheat_ammo", "1" );
 	SetBits( ent->v.flags, FL_GODMODE );
 
 	if( give )
@@ -277,6 +332,13 @@ void IOS_CheatSet( int on )
 	edict_t *ent = IOS_CheatPlayer( );
 
 	cheat_on = on;
+
+	if( !on )
+	{
+		IOS_CheatSetSlowmo( 0 );
+		IOS_CheatSetLowgrav( 0 );
+		Cvar_Set( "ios_cheat_ammo", "0" );
+	}
 
 	if( !ent )
 		return;
@@ -345,8 +407,8 @@ void IOS_GoToLevel( int i )
 	give_on_load = true;
 }
 
-// once a frame: god mode comes back on each new level, noclip and notarget
-// end there (as flying ends at each new level in the other ports)
+// once a frame: god mode comes back on each new level; noclip, notarget,
+// slow motion and low gravity end there (as flying ends at each new level in the other ports)
 void IOS_CheatFrame( void )
 {
 	edict_t *ent;
@@ -372,6 +434,8 @@ void IOS_CheatFrame( void )
 	ClearBits( ent->v.flags, FL_NOTARGET );
 	if( ent->v.movetype == MOVETYPE_NOCLIP )
 		ent->v.movetype = MOVETYPE_WALK;
+	IOS_CheatSetSlowmo( 0 );
+	lowgrav_on = false; // (the new level's world has set its gravity)
 }
 
 // typing the word in the console toggles the cheat, as in the other ports
@@ -383,6 +447,7 @@ static void IOS_Sithewok_f( void )
 void IOS_CheatInit( void )
 {
 	Cmd_AddCommand( "sithewok", IOS_Sithewok_f, "" );
+	Cvar_RegisterVariable( &ios_cheat_ammo );
 }
 
 // before the engine runs again in the same process: the cheat itself stays
@@ -395,4 +460,8 @@ void IOS_CheatForget( void )
 	give_on_load = false;
 	chapters_game[0] = 0;
 	num_chapters = 0;
+	if( slowmo_on )
+		Cvar_Set( "sys_timescale", saved_timescale[0] ? saved_timescale : "1" );
+	slowmo_on = lowgrav_on = false;
+	Cvar_Set( "ios_cheat_ammo", "0" );
 }

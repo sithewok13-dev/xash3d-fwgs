@@ -72,13 +72,11 @@ int IOS_Angle_FellBack( void );
 #define IOSTOUCH_FPS_W 70.0
 #define IOSTOUCH_FPS_H 22.0
 #define IOSTOUCH_FPS_PERIOD 0.5
-// The cheat: CHEAT held this long switches it; while it's on, JUMP or USE
-// held still (within IOSTOUCH_CHEAT_STILL points) this long switches noclip
-// or notarget, and two quick taps of JUMP end noclip ("land")
+// The cheat: CHEAT held this long switches it; tapped while it's on, the
+// cheat menu (noclip, notarget, slow motion, low gravity)
 #define IOSTOUCH_CHEAT_HOLD 0.5
-#define IOSTOUCH_CHEAT_STILL 10.0
-#define IOSTOUCH_LAND_TAP 0.25
-#define IOSTOUCH_LAND_GAP 0.35
+#define IOSTOUCH_CHEAT_ROW_H 46.0
+#define IOSTOUCH_CHEAT_MENU_W 230.0
 // LEVEL: held this long it shows chapter 1, then counts on every step
 #define IOSTOUCH_LEVEL_HOLD 0.5
 #define IOSTOUCH_LEVEL_STEP 0.4
@@ -193,7 +191,7 @@ typedef enum
 	KIND_HOLDACT,  // SAVE / LOAD: tap = the game's Save / Load Game menu, held = quick save / load (a ring)
 	KIND_MENU,     // tap: Escape, hold: tray
 	KIND_TRAY,     // a tray or option row button
-	KIND_CHEAT,    // held: the cheat on or off
+	KIND_CHEAT,    // held: the cheat on or off; tapped: the cheat menu
 	KIND_LEVEL,    // held: counts the chapters, lifted: goes there
 	KIND_CAMERA,   // the photo mode's gestures
 	KIND_WHEEL,    // tap: next weapon, slide or hold: the weapon wheel
@@ -294,8 +292,30 @@ static ios_wheel_item_t wheel_items[IOSTOUCH_WHEEL_MAX];
 static int wheel_n, wheel_open, wheel_slide, wheel_pick = -1;
 static CGPoint wheel_center, wheel_ref;
 static CGFloat wheel_r0, wheel_r1;
-static CFTimeInterval level_next, toast_until, jump_tap_end;
+static CFTimeInterval level_next, toast_until;
 static int levels_open, level_rows, level_now = -1; // LEVEL's list of chapters
+static int cheatmenu_open, cheat_extras = -1; // the cheat menu; what of it is on
+
+// what of the cheat menu is on, one bit each, and its words under CHEAT
+static int CheatExtras( void )
+{
+	return ( IOS_CheatNoclip( ) ? 1 : 0 ) | ( IOS_CheatNotarget( ) ? 2 : 0 )
+		| ( IOS_CheatSlowmo( ) ? 4 : 0 ) | ( IOS_CheatLowgrav( ) ? 8 : 0 );
+}
+
+static NSString *CheatExtrasText( int bits )
+{
+	static NSString *const words[4] = { @"NOCLIP", @"NOTARGET", @"SLOW-MO", @"LOW G" };
+	NSMutableArray *on = [NSMutableArray array];
+
+	for( int i = 0; i < 4; i++ )
+	{
+		if( bits & ( 1 << i ))
+			[on addObject:words[i]];
+	}
+
+	return [on componentsJoinedByString:@" · "];
+}
 static int gyro_running, gyro_was_ok, gyro_last_side;
 static CFTimeInterval gyro_turned_round, gyro_last_frame;
 static CMMotionManager *motion;
@@ -531,7 +551,7 @@ static void SaveGyro( void )
 	int fps_label_shown;         // the number it says (-1: none yet)
 	CAShapeLayer *run_chevrons, *run_link;
 	int run_lit;                 // what run_marker shows (-1: not yet set)
-	UILabel *cheat_tags[2];      // under JUMP and USE while the cheat is on
+	UILabel *cheat_tag;          // under CHEAT: what of its menu is on
 	UILabel *toast;
 	UIView *flash;
 	UIView *wheel;               // the weapon wheel, made each time it opens
@@ -540,6 +560,10 @@ static void SaveGyro( void )
 	CAShapeLayer *wheel_slices[IOSTOUCH_WHEEL_MAX];
 	UIView *wheel_cells[IOSTOUCH_WHEEL_MAX];
 	NSMutableDictionary *icon_cache;
+
+	// CHEAT's menu, made the first time it opens
+	IOSLevelPanel *cheat_panel;
+	UIButton *cheat_rows[4];
 
 	// LEVEL's list of chapters, made the first time it opens
 	IOSLevelPanel *level_panel;
@@ -581,6 +605,10 @@ static void SaveGyro( void )
 - (void)openLevels;
 - (void)closeLevels;
 - (void)placeLevelPanel;
+- (void)placeCheatMenu;
+- (void)updateCheatMenu;
+- (void)openCheatMenu;
+- (void)closeCheatMenu;
 @end
 
 static UIView *MakeCircle( CGFloat radius, CGFloat alpha )
@@ -672,18 +700,13 @@ static CGFloat ButtonAlpha( int i, int on )
 		[self addSubview:v];
 	}
 
-	for( int i = 0; i < 2; i++ )
-	{
-		UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake( 0, 0, 70, 12 )];
-		l.text = i ? @"NOTARGET" : @"NOCLIP";
-		l.textAlignment = NSTextAlignmentCenter;
-		l.font = [UIFont boldSystemFontOfSize:8];
-		l.textColor = [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
-		l.hidden = YES;
-		l.alpha = ctrl_opacity;
-		cheat_tags[i] = l;
-		[self addSubview:l];
-	}
+	cheat_tag = [[UILabel alloc] initWithFrame:CGRectMake( 0, 0, 220, 12 )];
+	cheat_tag.textAlignment = NSTextAlignmentCenter;
+	cheat_tag.font = [UIFont boldSystemFontOfSize:9];
+	cheat_tag.textColor = [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0];
+	cheat_tag.hidden = YES;
+	cheat_tag.alpha = ctrl_opacity;
+	[self addSubview:cheat_tag];
 
 	toast = [[UILabel alloc] init];
 	toast.textAlignment = NSTextAlignmentCenter;
@@ -859,9 +882,11 @@ static CGFloat ButtonAlpha( int i, int on )
 	btn_labels[BTN_CAM_FREEZE].text = freeze_on ? @"FREEZE\nON" : @"FREEZE\nOFF";
 	btn_lit[BTN_CHEAT] = cheat_on;
 
-	cheat_tags[0].hidden = cheat_tags[1].hidden = !cheat_on || freezing || seq != SEQ_NONE;
-	cheat_tags[0].textColor = IOS_CheatNoclip( ) ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
-	cheat_tags[1].textColor = IOS_CheatNotarget( ) ? [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0] : [UIColor colorWithRed:1.0 green:0.3 blue:0.25 alpha:0.9];
+	cheat_extras = CheatExtras( );
+	cheat_tag.text = CheatExtrasText( cheat_extras );
+	cheat_tag.hidden = !cheat_on || !cheat_extras || !btn_shown[BTN_CHEAT] || freezing || seq != SEQ_NONE;
+	if( cheatmenu_open )
+		[self updateCheatMenu];
 
 	// CHEAT: gold while the cheat is on
 	btn_views[BTN_CHEAT].layer.borderColor = cheat_on ?
@@ -944,8 +969,7 @@ static CGFloat ButtonAlpha( int i, int on )
 	fps_label.center = CGPointMake(( btn_pos[BTN_QSAVE].x + btn_pos[BTN_QLOAD].x ) * 0.5,
 		top + buttons[BTN_QSAVE].radius + 8 + IOSTOUCH_FPS_H * 0.5 );
 
-	cheat_tags[0].center = CGPointMake( btn_pos[BTN_JUMP].x, btn_pos[BTN_JUMP].y + buttons[BTN_JUMP].radius + 7 );
-	cheat_tags[1].center = CGPointMake( btn_pos[BTN_USE].x, btn_pos[BTN_USE].y + buttons[BTN_USE].radius + 7 );
+	cheat_tag.center = CGPointMake( btn_pos[BTN_CHEAT].x, btn_pos[BTN_CHEAT].y + buttons[BTN_CHEAT].radius + 8 );
 	toast.frame = CGRectMake( 0, 0, MIN( 360, size.width - 2 * ( in.left + 140 )), 28 );
 	toast.center = CGPointMake( size.width * 0.5, top + IOSTOUCH_TRAY_DROP * 2 + 10 );
 
@@ -953,6 +977,8 @@ static CGFloat ButtonAlpha( int i, int on )
 	laid_out_insets = in;
 	if( levels_open )
 		[self placeLevelPanel];
+	if( cheatmenu_open )
+		[self placeCheatMenu];
 	laid_out_swapped = swapped;
 	[self updateShown];
 	[self updateLabels];
@@ -1058,7 +1084,7 @@ static CGFloat ButtonAlpha( int i, int on )
 		btn_views[i].alpha = ButtonAlpha( i, 0 );
 
 	stick_ring.alpha = stick_knob.alpha = ctrl_opacity;
-	cheat_tags[0].alpha = cheat_tags[1].alpha = ctrl_opacity;
+	cheat_tag.alpha = ctrl_opacity;
 	run_lit = -1; // redone at its next look
 	run_marker.alpha = IOSTOUCH_IDLE_ALPHA * ctrl_opacity;
 }
@@ -1116,9 +1142,12 @@ static CGFloat ButtonAlpha( int i, int on )
 	cheat_on = on;
 	IOS_CheatSet( on );
 	if( !on )
+	{
 		[self closeLevels];
+		[self closeCheatMenu];
+	}
 	Haptic( 0 );
-	[self showToast:on ? @"Cheat on: god mode, all weapons" : @"Cheat off"];
+	[self showToast:on ? @"Cheat on: god mode, all weapons, endless ammo" : @"Cheat off"];
 	[self updateShown];
 	[self updateLabels];
 }
@@ -1919,6 +1948,182 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 	IOS_HoldGame( 0 );
 }
 
+// ---------------------------------------------------------------- CHEAT's menu
+
+// A tap on CHEAT while the cheat is on opens this under it, the game holding
+// still meanwhile: noclip, notarget, slow motion and low gravity, each
+// switched by a tap on its row (gold while it's on), several at once if
+// wanted. A touch anywhere off it closes it. All four end at the next level
+// (ios_cheats.c), and with the cheat.
+
+static NSString *const cheat_names[4] = { @"NOCLIP", @"NOTARGET", @"SLOW MOTION", @"LOW GRAVITY" };
+static NSString *const cheat_about[4] = { @"fly through walls", @"enemies ignore you", @"half speed", @"a quarter of the gravity" };
+
+static UIColor *CheatGold( CGFloat a )
+{
+	return [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:a];
+}
+
+- (void)makeCheatMenu
+{
+	UIVisualEffectView *glass;
+	UILabel *title;
+
+	if( cheat_panel )
+		return;
+
+	cheat_panel = [[IOSLevelPanel alloc] initWithFrame:CGRectZero];
+	cheat_panel.backgroundColor = [UIColor clearColor];
+	cheat_panel.layer.cornerRadius = 14.0;
+	cheat_panel.layer.borderWidth = 1.5;
+	cheat_panel.layer.borderColor = CheatGold( 0.6 ).CGColor;
+	cheat_panel.clipsToBounds = YES;
+	cheat_panel.hidden = YES;
+
+	glass = [[[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]] autorelease];
+	glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	glass.userInteractionEnabled = NO;
+	[cheat_panel addSubview:glass];
+	{
+		UIView *tint = [[[UIView alloc] init] autorelease];
+		tint.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+		tint.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
+		tint.userInteractionEnabled = NO;
+		[cheat_panel addSubview:tint];
+	}
+
+	title = [[[UILabel alloc] initWithFrame:CGRectMake( 16, 8, IOSTOUCH_CHEAT_MENU_W - 32, 22 )] autorelease];
+	title.text = @"λ  CHEATS";
+	title.font = [UIFont systemFontOfSize:15 weight:UIFontWeightHeavy];
+	title.textColor = CheatGold( 1.0 );
+	[cheat_panel addSubview:title];
+
+	for( int i = 0; i < 4; i++ )
+	{
+		UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
+		UILabel *name = [[[UILabel alloc] initWithFrame:CGRectMake( 16, 6, IOSTOUCH_CHEAT_MENU_W - 80, 20 )] autorelease];
+		UILabel *about = [[[UILabel alloc] initWithFrame:CGRectMake( 16, 25, IOSTOUCH_CHEAT_MENU_W - 80, 14 )] autorelease];
+		UILabel *state = [[[UILabel alloc] initWithFrame:CGRectMake( IOSTOUCH_CHEAT_MENU_W - 60, 0, 46, IOSTOUCH_CHEAT_ROW_H )] autorelease];
+
+		row.frame = CGRectMake( 0, 36 + i * IOSTOUCH_CHEAT_ROW_H, IOSTOUCH_CHEAT_MENU_W, IOSTOUCH_CHEAT_ROW_H );
+		row.tag = i;
+		[row addTarget:self action:@selector(tapCheatRow:) forControlEvents:UIControlEventTouchUpInside];
+
+		name.text = cheat_names[i];
+		name.font = [UIFont systemFontOfSize:15 weight:UIFontWeightHeavy];
+		name.tag = 1;
+		about.text = cheat_about[i];
+		about.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+		about.textColor = [UIColor colorWithWhite:1.0 alpha:0.5];
+		state.font = [UIFont systemFontOfSize:13 weight:UIFontWeightHeavy];
+		state.textAlignment = NSTextAlignmentRight;
+		state.tag = 2;
+		for( UILabel *l in @[ name, about, state ] )
+		{
+			l.userInteractionEnabled = NO;
+			[row addSubview:l];
+		}
+
+		cheat_rows[i] = [row retain];
+		[cheat_panel addSubview:row];
+	}
+
+	[self addSubview:cheat_panel];
+}
+
+// under CHEAT, inside the safe area
+- (void)placeCheatMenu
+{
+	CGSize size = self.bounds.size;
+	UIEdgeInsets in = [self insets];
+	CGFloat w = IOSTOUCH_CHEAT_MENU_W;
+	CGFloat h = 36 + 4 * IOSTOUCH_CHEAT_ROW_H + 6;
+	CGFloat x = btn_pos[BTN_CHEAT].x - w * 0.5;
+	CGFloat y = btn_pos[BTN_CHEAT].y + buttons[BTN_CHEAT].radius + 8;
+
+	x = MAX( in.left + 8, MIN( x, size.width - in.right - 8 - w ));
+	y = MAX( in.top + 8, MIN( y, size.height - in.bottom - 8 - h ));
+	cheat_panel.frame = CGRectMake( x, y, w, h );
+}
+
+static int CheatOn( int i )
+{
+	switch( i )
+	{
+	case 0: return IOS_CheatNoclip( );
+	case 1: return IOS_CheatNotarget( );
+	case 2: return IOS_CheatSlowmo( );
+	default: return IOS_CheatLowgrav( );
+	}
+}
+
+- (void)updateCheatMenu
+{
+	for( int i = 0; i < 4; i++ )
+	{
+		int on = CheatOn( i );
+		UILabel *name = (UILabel *)[cheat_rows[i] viewWithTag:1];
+		UILabel *state = (UILabel *)[cheat_rows[i] viewWithTag:2];
+
+		cheat_rows[i].backgroundColor = on ? CheatGold( 0.22 ) : [UIColor clearColor];
+		name.textColor = on ? CheatGold( 1.0 ) : [UIColor colorWithWhite:1.0 alpha:0.92];
+		state.text = on ? @"ON" : @"OFF";
+		state.textColor = on ? CheatGold( 1.0 ) : [UIColor colorWithWhite:1.0 alpha:0.4];
+	}
+}
+
+- (void)tapCheatRow:(UIButton *)row
+{
+	int i = (int)row.tag;
+	int on;
+
+	if( !cheatmenu_open || i < 0 || i >= 4 )
+		return;
+
+	on = !CheatOn( i );
+	switch( i )
+	{
+	case 0: IOS_CheatSetNoclip( on ); break;
+	case 1: IOS_CheatSetNotarget( on ); break;
+	case 2: IOS_CheatSetSlowmo( on ); break;
+	default: IOS_CheatSetLowgrav( on ); break;
+	}
+
+	Haptic( 1 );
+	[self updateLabels];
+}
+
+- (void)openCheatMenu
+{
+	if( cheatmenu_open || !cheat_on || !IOS_CheatAllowed( ))
+		return;
+
+	[self closeWheel:0];
+	[self letGoExcept:NULL]; // (closes the tray too)
+	[self makeCheatMenu];
+
+	cheatmenu_open = 1;
+	toast.hidden = YES;
+	[self placeCheatMenu];
+	[self updateCheatMenu];
+	cheat_panel.hidden = NO;
+	[self bringSubviewToFront:cheat_panel];
+
+	// the game holds still while it's open
+	IOS_HoldGame( 1 );
+	Haptic( 0 );
+}
+
+- (void)closeCheatMenu
+{
+	if( !cheatmenu_open )
+		return;
+
+	cheatmenu_open = 0;
+	cheat_panel.hidden = YES;
+	IOS_HoldGame( 0 );
+}
+
 // ---------------------------------------------------------------- LEVEL's list
 
 // A tap on the tray's LEVEL opens this over the game, which holds still
@@ -2275,6 +2480,14 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			continue;
 		}
 
+		// the cheat menu open: the same (its rows are buttons of their own)
+		if( cheatmenu_open )
+		{
+			[self closeCheatMenu];
+			s->role = ROLE_IGNORE;
+			continue;
+		}
+
 		b = [self buttonAt:p];
 
 		// the wheel opened to tap: a slice picks, anywhere else closes it
@@ -2421,7 +2634,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 - (void)endTouch:(UITouch *)t cancelled:(int)cancelled
 {
 	slot_t *s = [self slotFor:t];
-	int open_levels = 0;
+	int open_levels = 0, open_cheats = 0;
 
 	if( !s )
 		return;
@@ -2491,27 +2704,14 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			level_counting = 0;
 			toast_until = 0;
 			break;
+		case KIND_CHEAT:
+			// a tap (a hold switches the cheat): its menu while it's on,
+			// nothing while it's off
+			if( tap && cheat_on )
+				open_cheats = 1;
+			break;
 		default:
 			break;
-		}
-
-		// cheat on and flying: two quick taps of JUMP land
-		if( b == BTN_JUMP && cheat_on && !cancelled )
-		{
-			CFTimeInterval now = CACurrentMediaTime();
-
-			if( now - s->t0 < IOSTOUCH_LAND_TAP && !s->done )
-			{
-				if( jump_tap_end > 0 && s->t0 - jump_tap_end < IOSTOUCH_LAND_GAP && IOS_CheatNoclip( ))
-				{
-					IOS_CheatSetNoclip( 0 );
-					Haptic( 0 );
-					[self updateLabels];
-					jump_tap_end = 0;
-				}
-				else jump_tap_end = now;
-			}
-			else jump_tap_end = 0;
 		}
 	}
 
@@ -2520,6 +2720,8 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	// (once this touch is let go: opening lets go of the others)
 	if( open_levels )
 		[self openLevels];
+	if( open_cheats )
+		[self openCheatMenu];
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
@@ -2538,6 +2740,7 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 {
 	[self closeWheel:0];
 	[self closeLevels];
+	[self closeCheatMenu];
 
 	for( int i = 0; i < IOSTOUCH_MAX_TOUCHES; i++ )
 	{
@@ -2565,6 +2768,11 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	// the list closes itself once the cheat or single player is over
 	if( levels_open && ( !cheat_on || IOS_LevelCount( ) <= 0 ))
 		[self closeLevels];
+	if( cheatmenu_open && ( !cheat_on || !IOS_CheatAllowed( )))
+		[self closeCheatMenu];
+	// noclip and the rest end at each new level: the tag and menu follow
+	if( CheatExtras( ) != cheat_extras )
+		[self updateLabels];
 
 	if( level_counting )
 	{
@@ -2600,40 +2808,6 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			continue;
 
 		def = &buttons[s->button];
-
-		// cheat on: JUMP or USE held still switch noclip or notarget
-		if(( s->button == BTN_JUMP || s->button == BTN_USE ) && cheat_on )
-		{
-			if( s->moved > IOSTOUCH_CHEAT_STILL )
-			{
-				btn_rings[s->button].strokeEnd = 0.0;
-				continue;
-			}
-
-			f = ( now - s->t0 ) / IOSTOUCH_CHEAT_HOLD;
-			[CATransaction begin];
-			[CATransaction setDisableActions:YES];
-			btn_rings[s->button].strokeEnd = fmin( f, 1.0 );
-			[CATransaction commit];
-
-			if( f >= 1.0 )
-			{
-				s->done = 1;
-				Haptic( 0 );
-				if( s->button == BTN_JUMP )
-				{
-					IOS_CheatSetNoclip( !IOS_CheatNoclip( ));
-					[self showToast:IOS_CheatNoclip( ) ? @"Noclip on: double-tap JUMP to land" : @"Noclip off"];
-				}
-				else
-				{
-					IOS_CheatSetNotarget( !IOS_CheatNotarget( ));
-					[self showToast:IOS_CheatNotarget( ) ? @"Notarget on: enemies ignore you" : @"Notarget off"];
-				}
-				[self updateLabels];
-			}
-			continue;
-		}
 
 		if( def->hold <= 0 )
 			continue;
@@ -3027,7 +3201,7 @@ static void GyroFrame( void )
 	gyro_yaw = gyro_pitch = 0.0;
 	os_unfair_lock_unlock( &gyro_lock );
 
-	ok = gyro_running && ( gyro_mode == GYRO_ALWAYS || [overlay gyroThumbDown] ) && !tray_open && !levels_open && !freezing && seq == SEQ_NONE
+	ok = gyro_running && ( gyro_mode == GYRO_ALWAYS || [overlay gyroThumbDown] ) && !tray_open && !levels_open && !cheatmenu_open && !freezing && seq == SEQ_NONE
 		&& now - gyro_turned_round >= IOSTOUCH_GYRO_TURN_HOLD;
 	use = ok && gyro_was_ok && now - gyro_last_frame <= IOSTOUCH_GYRO_MAX_FRAME;
 	gyro_was_ok = ok;

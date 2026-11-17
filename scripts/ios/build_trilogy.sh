@@ -32,6 +32,8 @@ IPA_NAME=${IPA_NAME:-Xash3D-iOS-unsigned.ipa}
 . scripts/ios/patch_mainui.sh
 patch_menu_buttons 3rdparty/mainui
 patch_menu_text 3rdparty/mainui
+# the cheat's ammo, in each game's code
+. scripts/ios/patch_hlsdk.sh
 
 mkdir -p build
 ./waf configure --enable-lto --ios build install --destdir=build/ios 2>&1 | tee build/waf.log
@@ -63,6 +65,7 @@ build_hlsdk() {
 	rm -rf "$src"
 	git clone --recursive --depth 1 -b "$branch" "$repo" "$src" || return 1
 	git -C "$src" log -1 --format='hlsdk %h %s'
+	patch_hlsdk_ammo "$src" || return 1
 
 	# Release builds of hlsdk are broken on iOS upstream, so build Debug,
 	# like scripts/gha/build_ios.sh does. Asserts are off: iOS keeps a game
