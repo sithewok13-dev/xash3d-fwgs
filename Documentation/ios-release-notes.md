@@ -12,7 +12,7 @@
   page. Keep each paragraph and list item on one line: a release page turns
   every line break into a visible one.
 -->
-**Xash3D FWGS for iOS v0.1-beta1**: an unofficial iPhone build of the Xash3D FWGS engine that plays *Half-Life*, *Half-Life: Opposing Force*, *Half-Life: Blue Shift* and, as an experimental extra, *Counter-Strike 1.6*, with touch controls.
+**Half-Life for iOS v0.1**: an unofficial iPhone build of the Xash3D FWGS engine that plays *Half-Life*, *Half-Life: Opposing Force*, *Half-Life: Blue Shift* and, as an experimental extra, *Counter-Strike 1.6*, with touch controls.
 
 **You need your own copy of the games; no game files are included.** You copy the game folders from your Steam copy on a computer: Half-Life is needed for all of them, Opposing Force and Blue Shift are optional (each is its own purchase on Steam).
 
@@ -22,17 +22,19 @@
 
 **New here?** *Known limitations*, *Requirements* and *Install* are near the bottom of this page, just above the download.
 
-### What's in ios-v0.1-beta1
+### What's in ios-v0.1
 
-The first public test release. This is a **beta**: it has been played on one iPhone only, so expect rough edges.
+The first numbered release. It's a **beta**: it has been played on one iPhone only, so expect rough edges (see *Known limitations*).
 
 - **Half-Life, Opposing Force and Blue Shift** in one app, picked on its *Choose a game* screen, which says for each game whether it's ready or which folder is missing.
-- **Touch controls** in the same style as the owner's other iOS ports (Jedi Knight, Serious Sam): a move stick where your left thumb lands, drag to look, FIRE with DUCK, USE and JUMP around it, ALT fire and RELOAD, SAVE and LOAD (tap for the game's save and load menus, hold to quick save and quick load), and a weapon wheel.
-- **LIGHT**, the flashlight (in Opposing Force, the night vision).
-- **Tilt aiming (gyro)**, off until you switch it on.
-- **The camera:** photos, selfies, bursts, a cinematic burst and Action Freeze, a free camera around a frozen moment.
+- **Touch controls** in the same style as the owner's other iOS ports (Jedi Knight, Serious Sam): a move stick where your left thumb lands, drag to look, FIRE with DUCK, USE and JUMP around it, ALT fire and RELOAD, and LIGHT for the flashlight (in Opposing Force, the night vision).
+- **A weapon wheel:** slide from NEXT WPN and pick a weapon by its HUD icon, with its ammo shown; in single player the game holds still while it's open.
+- **SAVE and LOAD:** tap for the game's save and load menus, hold for a third of a second to quick save or quick load.
+- **Metal graphics, up to 120 FPS:** the game draws with Metal on iOS 18 and newer (OpenGL ES 3.0 through ANGLE), and runs at 60 or 120 frames a second (hold FPS in MENU's tray).
+- **Tilt aiming (gyro)**, off until you switch it on, and controls you can make fainter (OPACITY) or mirror to the other side (CTRL).
+- **The camera:** photos, selfies with the characters near you, bursts, a cinematic burst, and Action Freeze, a free camera around a frozen moment.
 - **The cheat** (`sithewok`): god mode and all weapons, noclip, notarget, and LEVEL to jump to any chapter.
-- **Experimental extras, with the least testing:** Half-Life co-op for up to 4 players, Counter-Strike (with your own Steam copy), and Multiplayer Modes (deathmatch variants, with the free Adrenaline Gamer mod's files). See *Playing with friends* below.
+- **Experimental extras, with the least testing:** Half-Life co-op for up to 4 players, Counter-Strike 1.6 (with your own Steam copy), and Multiplayer Modes (deathmatch variants, with the free Adrenaline Gamer mod's files). See *Playing with friends* below, and *Known limitations*: playing between two devices may not work yet.
 
 ---
 
@@ -82,7 +84,7 @@ Exact positions shift a little to fit your screen; the buttons stay clear of the
 
 #### MENU and its hidden tray
 
-**Tap MENU** for the game's menu (save, load, options, quit). **Hold MENU** until its ring fills (about half a second) and a row of small buttons, the tray, opens under the top row. Tap MENU again to close it. Under the tray, small and grey, is the app's version, for example `v1.0 (76)`, and the build's commit.
+**Tap MENU** for the game's menu (save, load, options, quit). **Hold MENU** until its ring fills (about half a second) and a row of small buttons, the tray, opens under the top row. Tap MENU again to close it. Under the tray, small and grey, is the build stamp, for example `build 85 · Nov 10 · Metal`: the build's number, its date, and the graphics in use (*Metal*, or *old GL* when the app fell back to Apple's older OpenGL ES).
 
 - **GYRO:** tilt aiming on or off (see below). **Hold GYRO** for its options.
 - **SENS:** how fast a drag turns the view: each tap steps through 0.5x, 0.75x, 1x, 1.25x, 1.5x and 2x. **Hold SENS** for the default, 1x.
@@ -146,17 +148,20 @@ These have had the least testing of anything in the app.
 
 ### Known limitations
 
+**Sorry about the bugs.** This is an unofficial beta, made by one fan for their own iPhone and shared in case others enjoy it. Some things will be broken. If you find one, please report it (see *Found a bug?*): it really helps.
+
 - **Beta, tested on one iPhone only:** the app has been played on the owner's own iPhone. Nothing else has been tried: no iPad (the app is marked for iPad, but has never been installed on one), no other iPhone models or iOS versions, no game controllers, keyboards or mice.
-- **The experimental extras** (co-op, Multiplayer Modes, Counter-Strike, playing with friends over Wi-Fi or Tailscale) have had much less testing than single player. If something goes wrong, please report it (see *Found a bug?*).
+- **The Metal graphics are new** in this release. If they fail to start, the app switches to Apple's older OpenGL ES by itself and says so once (*New graphics failed last time: using the old ones*); please report it if you see that.
+- **Playing with friends is the least finished part, sorry.** Co-op, Multiplayer Modes and Counter-Strike have had very little testing, and playing between two devices, over Wi-Fi or Tailscale, may not work yet. It needs more work. If you try it, a report of what happened, working or not, is very welcome.
 - **Counter-Strike's bots and Training** need files from your own games (see *Counter-Strike* under *Playing with friends*). Copying them in hasn't been tried with this version yet.
-- **Finding games on your Wi-Fi by itself may not work**, because iOS limits broadcasts for apps installed this way: join by address instead.
+- **Finding games on your Wi-Fi by itself (the LAN search) doesn't work for now**: iOS only lets apps with a special Apple permission send the broadcasts it uses, and sideloaded apps don't have it. Join by address instead (the *Choose a game* screen shows yours).
 - **Game data:** only Steam copies are expected to work. The *Choose a game* screen notices Steam's 25th anniversary update data (2023) and then adds its *Uplink* chapter to LEVEL. Other editions (old CDs, non-English versions) haven't been tried.
 - **Leaving the app doesn't save your game.** Quick save first.
-- **The app's version** shows as `v1.0` and a build number, not `v0.1-beta1`: that's expected.
+- **The app's version** shows as `v1.0` and a build number, not `v0.1`: that's expected.
 
 ### Requirements
 
-- An **iPhone on iOS 12 or newer** (the oldest version the app is built for). Only one iPhone, on a recent iOS, has been tried.
+- An **iPhone on iOS 12 or newer** (the oldest version the app is built for). The Metal graphics need iOS 18 or newer; on older versions the app uses Apple's older OpenGL ES instead, which hasn't been tried. Only one iPhone, on a recent iOS, has been tried.
 - **Your own Steam copy of Half-Life** for its `valve` folder, and a computer with Steam to copy it from. Optional, each its own purchase: *Half-Life: Opposing Force* (the `gearbox` folder), *Half-Life: Blue Shift* (`bshift`) and *Counter-Strike* (`cstrike`). The free *Adrenaline Gamer* mod (`ag`) for Multiplayer Modes.
 - A **sideloading tool or signing service** (something that installs apps from outside the App Store) that can install an app file (`.ipa`) you give it, for example AltStore, SideStore or Sideloadly. The `.ipa` isn't signed for your iPhone, so it can't be installed without one. With a free Apple ID, Apple's limits apply: the app has to be signed again every 7 days, and only 3 such apps can be installed at a time.
 
@@ -177,18 +182,24 @@ These have had the least testing of anything in the app.
 
 **If something goes wrong:** `engine.log`, `xash-trace.txt` and `xash-trace-previous.txt`, in the app's folder in Files, say what the game was doing. Copy them out before you open the app again.
 
-**Found a bug?** Please report it here, not to the upstream Xash3D FWGS project, and say you're on **ios-v0.1-beta1** (the app shows `v1.0` and a build number under MENU's tray), which iPhone and iOS version you have, which game, and what you were doing, with the log files above: https://github.com/sithewok13-dev/xash3d-fwgs/issues
+**Found a bug?** Please report it here, not to the upstream Xash3D FWGS project, and say you're on **ios-v0.1** (the app shows its build number under MENU's tray, for example `build 85`), which iPhone and iOS version you have, which game, and what you were doing, with the log files above: https://github.com/sithewok13-dev/xash3d-fwgs/issues
 
 **Download:** under *Assets* below: `Xash3D-iOS-unsigned.ipa`. The *iOS latest* prerelease, also on the Releases page, is rebuilt automatically after every code change, before anyone has tried it: use this release.
 
 ---
 
+**Thank you** to the people whose work this app is built on: Uncle Mike, who made the original Xash3D engine; the Flying With Gauss team who turned it into Xash3D FWGS and keep it going, among them Alibek Omarov (a1batross), mittorn, nekonomicon, Velaron and SNMetamorph, and all its contributors (https://github.com/FWGS/xash3d-fwgs/graphs/contributors); the hlsdk-portable contributors; Valve, who made Half-Life and released its SDK; Gearbox Software for Opposing Force and Blue Shift; BulliT (Martin Webrant) for Adrenaline Gamer; and the SDL and ANGLE projects. None of them made this port or are responsible for its bugs.
+
 Unofficial build. Half-Life, Half-Life: Opposing Force, Half-Life: Blue Shift and Counter-Strike are games by Valve (Opposing Force and Blue Shift with Gearbox Software). This app is not affiliated with or endorsed by Valve or Gearbox Software. No game files are included: you need your own copies.
 
-**Xash3D FWGS** (GNU GPL v3), the engine, by Flying With Gauss and its contributors: https://github.com/FWGS/xash3d-fwgs. This app's source code, iOS changes included, is the `master` branch of https://github.com/sithewok13-dev/xash3d-fwgs (this release is the tag `ios-v0.1-beta1`: https://github.com/sithewok13-dev/xash3d-fwgs/tree/ios-v0.1-beta1). The engine also builds in libraries from its `3rdparty` folder, each under its own licence: https://github.com/sithewok13-dev/xash3d-fwgs/tree/master/3rdparty
+**Xash3D FWGS** (GNU GPL v3), the engine, by Flying With Gauss and its contributors: https://github.com/FWGS/xash3d-fwgs. This app's source code, iOS changes included, is the `master` branch of https://github.com/sithewok13-dev/xash3d-fwgs (this release is the tag `ios-v0.1`: https://github.com/sithewok13-dev/xash3d-fwgs/tree/ios-v0.1). The engine also builds in libraries from its `3rdparty` folder, each under its own licence: https://github.com/sithewok13-dev/xash3d-fwgs/tree/master/3rdparty
 
 **hlsdk-portable** (the game code of Half-Life, Opposing Force and Blue Shift, from its `master`, `opfor` and `bshift` branches), by Flying With Gauss and its contributors: https://github.com/FWGS/hlsdk-portable. It is based on Valve's Half-Life 1 SDK and is under Valve's **Half Life 1 SDK License**, which allows it to be copied, modified and given away in source and object code form, **only for free**, with the licence included: https://github.com/FWGS/hlsdk-portable/blob/master/LICENSE. The co-op and Multiplayer Modes game code comes from this project's own branches of it (`ios-coop`, `ios-ag`), under the same licence: https://github.com/sithewok13-dev/hlsdk-portable
 
 **Counter-Strike:** cs16-client by Velaron and contributors (GNU GPL v2 or later, with an exception for Valve's Half-Life engine and SDK code, and the Half Life 1 SDK License for the SDK parts): https://github.com/Velaron/cs16-client/blob/master/LICENSE. With ReGameDLL_CS by its contributors (see its licence): https://github.com/rehlds/ReGameDLL_CS/blob/master/LICENSE
+
+**Multiplayer Modes** are built on hlsdk-portable's `aghl` branch, an open-source Adrenaline Gamer by BulliT (Martin Webrant) and the FWGS contributors, under the Half Life 1 SDK License: https://github.com/FWGS/hlsdk-portable/tree/aghl
+
+**ANGLE** (BSD licence), by Google and the ANGLE contributors, draws the game with Metal: https://github.com/google/angle/blob/main/LICENSE
 
 **SDL2** (zlib licence), by Sam Lantinga and contributors: https://github.com/libsdl-org/SDL/blob/release-2.32.10/LICENSE.txt

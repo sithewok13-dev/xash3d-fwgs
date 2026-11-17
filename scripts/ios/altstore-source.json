@@ -1,0 +1,58 @@
+{
+  "name": "Half-Life for iOS (unofficial, Xash3D FWGS)",
+  "identifier": "io.github.sithewok13-dev.xash3d-fwgs-ios",
+  "subtitle": "Half-Life, Opposing Force and Blue Shift on iPhone",
+  "description": "An unofficial fan port of Xash3D FWGS, the open-source engine for Half-Life, to iPhone, with touch controls. One app plays Half-Life, Opposing Force and Blue Shift, plus experimental extras: Half-Life co-op, Multiplayer Modes and Counter-Strike 1.6.\n\nYou need your own Steam copy of each game. No game files are included.\n\nIt's a beta. Setup guide and bug reports: https://github.com/sithewok13-dev/xash3d-fwgs\n\nNot affiliated with or endorsed by Valve or Gearbox Software, or by the Xash3D FWGS developers.",
+  "iconURL": "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/game_launch/icon-xash-material.png",
+  "website": "https://github.com/sithewok13-dev/xash3d-fwgs",
+  "tintColor": "#f08c00",
+  "apps": [
+    {
+      "name": "Half-Life",
+      "bundleIdentifier": "com.sithewok.xash3d",
+      "developerName": "sithewok13-dev",
+      "subtitle": "Half-Life, Opposing Force and Blue Shift, with touch controls",
+      "localizedDescription": "An unofficial fan port of Xash3D FWGS to iPhone: play Half-Life, Half-Life: Opposing Force and Half-Life: Blue Shift with touch controls, picked on the app's own Choose a game screen.\n\n- Touch controls: a move stick where your thumb lands, drag to look, a weapon wheel\n- SAVE and LOAD: tap for the game's menus, hold to quick save and quick load\n- Tilt aiming (gyro), 60 or 120 frames a second\n- A camera: photos, selfies with the characters near you, bursts, and Action Freeze, a free camera around a frozen moment\n- A cheat (type sithewok): god mode, all weapons, noclip, and LEVEL to jump to any chapter\n- Experimental: Half-Life co-op for up to 4 players, Multiplayer Modes, and Counter-Strike 1.6\n\nYou need your own Steam copy of Half-Life (and of Opposing Force, Blue Shift or Counter-Strike to play those); no game files are included. Open the app once, then copy the game folders (valve, gearbox, bshift, cstrike) into Files > On My iPhone > Half-Life.\n\nIt's a beta, tested on one iPhone: expect bugs, and back up your saves. Multiplayer has had the least testing.\n\nSetup guide: https://github.com/sithewok13-dev/xash3d-fwgs#readme\n\nNot affiliated with or endorsed by Valve or Gearbox Software, or by the Xash3D FWGS developers.",
+      "iconURL": "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/game_launch/icon-xash-material.png",
+      "tintColor": "#f08c00",
+      "category": "games",
+      "screenshots": [
+        "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/gargantua.jpg",
+        "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/zombie-headcrabs.jpg",
+        "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/surface-tension-marines.jpg",
+        "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/black-mesa-lobby.jpg",
+        "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/opposing-force-m249.jpg",
+        "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/blue-shift-marines.jpg",
+        "https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/xen.jpg"
+      ],
+      "versions": [
+        {
+          "version": "1.0",
+          "buildVersion": "85",
+          "marketingVersion": "ios-latest",
+          "date": "2026-11-10T02:12:53Z",
+          "localizedDescription": "Test build 85 (Nov 10), the newest before the first numbered release. Test builds can have new bugs.\n\nRelease notes: https://github.com/sithewok13-dev/xash3d-fwgs/releases",
+          "downloadURL": "https://github.com/sithewok13-dev/xash3d-fwgs/releases/download/ios-latest/Xash3D-iOS-unsigned.ipa",
+          "size": 12589796,
+          "sha256": "18033f1619116af3b74da94006c2da362f18559b8eb5e59b4f51bdacde32b527",
+          "minOSVersion": "12.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "Multiplayer: hosting and joining games with friends on your Wi-Fi.",
+          "NSPhotoLibraryAddUsageDescription": "Photo mode saves your photos and selfies to Photos.",
+          "NSMotionUsageDescription": "Motion data is used for optional gyro aiming.",
+          "NSMicrophoneUsageDescription": "Microphone permissions are required for voice chat"
+        }
+      },
+      "version": "1.0",
+      "versionDate": "2026-11-10T02:12:53Z",
+      "versionDescription": "Test build 85 (Nov 10), the newest before the first numbered release. Test builds can have new bugs.\n\nRelease notes: https://github.com/sithewok13-dev/xash3d-fwgs/releases",
+      "downloadURL": "https://github.com/sithewok13-dev/xash3d-fwgs/releases/download/ios-latest/Xash3D-iOS-unsigned.ipa",
+      "size": 12589796
+    }
+  ],
+  "news": []
+}

@@ -132,13 +132,22 @@ with `write()` alone, first thing in the crash handler; SIGTRAP, SIGFPE and SIGS
 caught too), an uncaught Objective-C exception with its stack, or `exit() called`.
 
 Numbered releases: a manual run of master with `release=<tag>`
-(`gh workflow run ios-trilogy.yml --ref master -f release=ios-v0.1-beta1`, or the REST
+(`gh workflow run ios-trilogy.yml --ref master -f release=ios-v0.1`, or the REST
 call `POST repos/sithewok13-dev/xash3d-fwgs/actions/workflows/ios-trilogy.yml/dispatches`
 with `ref` and `inputs[release]`). The tag must look like `ios-v*` and not already be on
 another commit, and `Documentation/ios-release-notes.md` must contain the exact line
 `### What's in <tag>`. The release is created at the built commit with those notes as
 its text; a `-` in the version makes a prerelease that isn't marked latest. A release
 run leaves `ios-latest` alone.
+
+AltStore / SideStore source: `scripts/ios/altstore-source.json` (served at
+https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/scripts/ios/altstore-source.json).
+After publishing, a release run adds the release to it with
+`scripts/ios/update_altstore_source.py` (version, build and minimum iOS from the IPA's
+Info.plist, size, SHA-256, date, download link, a summary of the notes' list) and commits
+it to master; a push by `GITHUB_TOKEN` starts no workflow run. Until the first numbered
+release, the source lists the `ios-latest` build 85 by hand; that entry stops matching
+once `ios-latest` is rebuilt, and the first release run drops it.
 
 The iOS code is in `engine/platform/ios` (launcher, touch overlay, cheats, photo mode).
 The engine hooks are small and marked `#if XASH_IOS`, in `engine/client/input/input.c`,

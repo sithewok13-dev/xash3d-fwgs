@@ -1,3 +1,79 @@
+# Half-Life for iPhone: Half-Life, Opposing Force and Blue Shift (Xash3D FWGS)
+
+Play **Half-Life** (1998) and its expansions **Half-Life: Opposing Force** and **Half-Life: Blue Shift** on iPhone, with touch controls, in one app. It's an unofficial port of [Xash3D FWGS](https://github.com/FWGS/xash3d-fwgs), the open-source engine that runs Half-Life, with the game code from [hlsdk-portable](https://github.com/FWGS/hlsdk-portable). Half-Life co-op, deathmatch modes and Counter-Strike 1.6 are in there too, as experimental extras.
+
+<img src="https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/gargantua.jpg" width="100%" alt="Surface Tension: a Gargantua charges through rocket smoke towards Gordon's rocket launcher">
+
+**You need your own copy of the games (Steam). Game files are not included.** Buy [Half-Life](https://store.steampowered.com/app/70/HalfLife/) on Steam, and if you like [Opposing Force](https://store.steampowered.com/app/50/HalfLife_Opposing_Force/), [Blue Shift](https://store.steampowered.com/app/130/HalfLife_Blue_Shift/) or [Counter-Strike](https://store.steampowered.com/app/10/CounterStrike/). Then copy their folders to your iPhone.
+
+## Install
+
+You need an iPhone with iOS 12 or newer (iOS 18 or newer for the Metal graphics). The app isn't on the App Store, so you install it yourself ("sideloading"). Pick one way:
+
+- **SideStore or AltStore (easiest).** On your iPhone, tap **[Add to SideStore](https://sithewok13-dev.github.io/half-life/#add-sidestore)** or **[Add to AltStore](https://sithewok13-dev.github.io/half-life/#add-altstore)**, then install **Half-Life** from there. Updates come the same way.
+- **Feather, Sideloadly or another signing tool.** Download `Xash3D-iOS-unsigned.ipa` from the [releases page](https://github.com/sithewok13-dev/xash3d-fwgs/releases) and sign it with your tool.
+- **The source by hand.** In SideStore, AltStore or Feather, go to *Sources*, tap **+**, and paste this address:
+
+  ```
+  https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/scripts/ios/altstore-source.json
+  ```
+
+Then open the app once, and copy the game folders from your Steam copy (`valve`, and `gearbox`, `bshift` or `cstrike` if you have them) into **Files › On My iPhone › Half-Life**. [Step by step](https://github.com/sithewok13-dev/xash3d-fwgs/blob/master/Documentation/ios-release-notes.md#install)
+
+AltStore here means AltStore Classic; AltStore PAL can't install it. The *iOS latest* build on the releases page is the newest test build, made after every change and not yet tried by anyone.
+
+## Cool features
+
+- **Three games, one app:** Half-Life, Opposing Force and Blue Shift, picked on a *Choose a game* screen that says which folders it found.
+- **Touch controls** built for a phone: a move stick wherever your left thumb lands, drag anywhere to aim, FIRE, ALT fire, JUMP, DUCK, USE, RELOAD and a flashlight button.
+- **A weapon wheel:** slide your thumb from NEXT WPN and pick any weapon by its icon, with its ammo shown.
+- **Quick save and quick load** with a short hold, so a stray tap never loses your progress.
+- **Metal graphics** on iOS 18 and newer, at **60 or 120 frames a second**.
+- **Tilt aiming** with the gyro, if you like it.
+- **A camera:** photos, selfies with the characters near you, bursts, and **Action Freeze**, which stops the game so you can fly a camera round the moment.
+- **A cheat** (`sithewok`): god mode, every weapon, noclip, and a chapter list to jump anywhere in the game.
+- **Experimental extras:** Half-Life **co-op** for up to 4 players, **Multiplayer Modes** (deathmatch, team deathmatch, capture the flag, gun game and more, with the free Adrenaline Gamer mod's files), and **Counter-Strike 1.6** with your own Steam copy.
+
+[Every control explained](https://github.com/sithewok13-dev/xash3d-fwgs/blob/master/Documentation/ios-release-notes.md#how-to-play-every-control-explained)
+
+## Sorry about the bugs
+
+This is an unofficial beta, made by one fan and tested on one iPhone. Expect bugs, and back up your saves.
+
+**Multiplayer is the least finished part.** Co-op, Multiplayer Modes and Counter-Strike have had very little testing, and playing between two devices, over Wi-Fi or Tailscale, may not work yet. Finding games on your Wi-Fi by itself doesn't work for now, so join by address. Sorry: it needs more work.
+
+Found a bug? [Report it here](https://github.com/sithewok13-dev/xash3d-fwgs/issues), not to the Xash3D FWGS developers. Every report helps.
+
+<p>
+<img src="https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/black-mesa-lobby.jpg" width="49%" alt="Anomalous Materials: the Black Mesa lobby, with a scientist and a security guard at the front desk">
+<img src="https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/zombie-headcrabs.jpg" width="49%" alt="Unforeseen Consequences: a zombie and two headcrabs in a red-lit corridor, shotgun ready">
+<img src="https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/surface-tension-marines.jpg" width="49%" alt="Surface Tension: a marine dives for cover from an explosion in a desert canyon">
+<img src="https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/xen.jpg" width="49%" alt="Xen: floating islands and an alien controller, with the Gauss gun">
+<img src="https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/blue-shift-marines.jpg" width="49%" alt="Blue Shift: Barney fights marines in a parking yard">
+<img src="https://raw.githubusercontent.com/sithewok13-dev/xash3d-fwgs/master/docs/ios/screenshots/opposing-force-m249.jpg" width="49%" alt="Opposing Force: Shephard's M249 tears into Race X shock troopers at dusk, as a shock beam flies past">
+</p>
+
+*All the pictures come from the same engine and game code running on a computer, not from an iPhone, so they show no touch controls. Some scenes were set up with the game's console (god mode, monsters placed by hand).*
+
+## Thanks
+
+This port stands on other people's work, and it wouldn't exist without them. Thank you:
+
+- **Uncle Mike** (Unkle Mike), who wrote the original [Xash3D engine](https://www.moddb.com/engines/xash3d-engine).
+- **The Flying With Gauss (FWGS) team**, who made [Xash3D FWGS](https://github.com/FWGS/xash3d-fwgs) and keep it going: [Alibek Omarov (a1batross)](https://github.com/a1batross), [mittorn](https://github.com/mittorn), [nekonomicon](https://github.com/nekonomicon), [Velaron](https://github.com/Velaron), [SNMetamorph](https://github.com/SNMetamorph) and [all its contributors](https://github.com/FWGS/xash3d-fwgs/graphs/contributors). You can [support them here](https://github.com/FWGS/xash3d-fwgs/blob/master/Documentation/donate.md).
+- **The [hlsdk-portable](https://github.com/FWGS/hlsdk-portable) contributors**, for the game code of all three games.
+- **Valve**, for Half-Life and for releasing its SDK, and **Gearbox Software** for Opposing Force and Blue Shift.
+- **BulliT (Martin Webrant)** for Adrenaline Gamer, **Velaron** for [cs16-client](https://github.com/Velaron/cs16-client), and the [ReGameDLL_CS](https://github.com/rehlds/ReGameDLL_CS) contributors.
+- **[SDL](https://github.com/libsdl-org/SDL)** and **[ANGLE](https://github.com/google/angle)**, which this app runs on.
+
+None of them made this port, and none of its bugs are theirs.
+
+Not affiliated with or endorsed by Valve or Gearbox Software, and not an official Xash3D FWGS release.
+
+---
+
+*The rest of this page is upstream Xash3D FWGS's README, by the Flying With Gauss team and the Xash3D FWGS contributors, from [FWGS/xash3d-fwgs](https://github.com/FWGS/xash3d-fwgs). Its links point to upstream; for the iPhone port, see above.*
+
 > [!CAUTION]
 > **Only download Xash3D FWGS from official sources.** Third-party builds, "modded launchers", "optimized" repacks and random mirrors are frequently bundled with malware, miners, spyware and credential stealers. We cannot vouch for anything we did not build. Get official binaries only from the [releases page](https://github.com/FWGS/xash3d-fwgs/releases/tag/continuous).
 

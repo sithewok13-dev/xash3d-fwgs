@@ -17,6 +17,9 @@
 #     master, the tag isn't ios-v<version>, the tag is already on another
 #     commit, or the notes have no "### What's in <tag>" line.
 #   Running it again for the same tag on the same commit updates that release.
+#   After publishing, a release run adds the release to the AltStore /
+#   SideStore source (scripts/ios/altstore-source.json) and commits that to
+#   master. If that part fails, the release is still out: add it by hand.
 #
 # The app draws with OpenGL ES 3.0 on Metal through ANGLE
 # (engine/platform/ios/ios_angle.c), falling back to Apple's OpenGL ES.
@@ -163,7 +166,7 @@ jobs:
       # The tag a manual run was asked to release; empty for pushes and ordinary runs.
       RELEASE_TAG: ${{ inputs.release }}
       # Release title; the tag's version is added after it (ios-v0.1 -> "... v0.1").
-      RELEASE_TITLE: "Xash3D FWGS for iOS"
+      RELEASE_TITLE: "Half-Life for iOS"
       RELEASE_NOTES: Documentation/ios-release-notes.md
     steps:
     - name: Checkout
@@ -319,3 +322,52 @@ jobs:
           gh release create "$RELEASE_TAG" "artifacts/$IPA_NAME" --target "$GITHUB_SHA" \
             --title "$TITLE" --notes-file "$RUNNER_TEMP/release-notes.md" $KIND
         fi
+
+    # Release runs: the AltStore / SideStore source (scripts/ios/altstore-source.json,
+    # served at https://raw.githubusercontent.com/<repo>/master/scripts/ios/altstore-source.json)
+    # gets the release just published: version, build, minimum iOS, size,
+    # SHA-256, date, download link and a summary of the notes
+    # (scripts/ios/update_altstore_source.py, from the Jedi Knight port),
+    # committed to master. A push made with GITHUB_TOKEN starts no workflow
+    # run (and the commit says [skip ci]), so this doesn't rebuild ios-latest.
+    # continue-on-error: if this part fails, the release (already out) still
+    # counts as a success, with a warning to add it by hand.
+    - name: Add the release to the AltStore / SideStore source
+      if: github.ref == 'refs/heads/master' && env.RELEASE_TAG != ''
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_BRANCH: master
+      run: |
+        set -euo pipefail
+        trap 'echo "::warning::The AltStore / SideStore source was not updated for ${RELEASE_TAG}. The release itself is published; add it to scripts/ios/altstore-source.json by hand (python3 scripts/ios/update_altstore_source.py)."' ERR
+        SRC="$RUNNER_TEMP/altstore-source"
+        rm -rf "$SRC"
+        git clone --quiet --depth 1 --branch "$SOURCE_BRANCH" \
+          "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$SRC"
+        git -C "$SRC" config user.name "github-actions[bot]"
+        git -C "$SRC" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        for attempt in 1 2 3; do
+          # the script and the notes from the commit just built; the source
+          # file from the newest master
+          python3 -I scripts/ios/update_altstore_source.py \
+            --source "$SRC/scripts/ios/altstore-source.json" \
+            --tag "$RELEASE_TAG" --notes "$RELEASE_NOTES" \
+            --ipa "artifacts/$IPA_NAME"
+          if git -C "$SRC" diff --quiet; then
+            echo "The source already has ${RELEASE_TAG}"
+            break
+          fi
+          git -C "$SRC" commit --quiet -am "iOS: add ${RELEASE_TAG} to the AltStore / SideStore source [skip ci]"
+          if git -C "$SRC" push --quiet origin "HEAD:${SOURCE_BRANCH}"; then
+            echo "Added ${RELEASE_TAG} to the source on ${SOURCE_BRANCH}"
+            break
+          fi
+          if [ "$attempt" = 3 ]; then
+            false # gives up (the warning above)
+          fi
+          # someone pushed in between: start again from the new branch head
+          git -C "$SRC" fetch --quiet --depth 1 origin "$SOURCE_BRANCH"
+          git -C "$SRC" reset --quiet --hard FETCH_HEAD
+        done
+        rm -rf "$SRC"
