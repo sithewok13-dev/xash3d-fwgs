@@ -172,6 +172,7 @@ int IOS_CheatSlowmo( void );
 int IOS_CheatLowgrav( void );
 void IOS_CheatSetSlowmo( int on );
 void IOS_CheatSetLowgrav( int on );
+void IOS_CheatExtrasOff( void );
 int IOS_LevelCount( void );
 const char *IOS_LevelTitle( int i );
 const char *IOS_LevelMap( int i );

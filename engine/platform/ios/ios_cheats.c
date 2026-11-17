@@ -105,6 +105,7 @@ static int current_chapter = -1;
 static qboolean cheat_on;
 static char saved_sv_cheats[16];
 static int cheat_servercount = -1;
+static int extras_servercount = -1; // the level the menu's switches were last ended for
 static qboolean give_on_load; // LEVEL's map starts with nothing: the suit and weapons
 
 // the cheat menu's slow motion and low gravity, with what they replaced
@@ -268,7 +269,7 @@ int IOS_CheatLowgrav( void )
 // half speed, the whole game (as sys_timescale does)
 void IOS_CheatSetSlowmo( int on )
 {
-	if( on && ( !cheat_on || !IOS_CheatPlayer( )))
+	if( on && !IOS_CheatPlayer( ))
 		return;
 
 	if( on && !slowmo_on )
@@ -285,7 +286,7 @@ void IOS_CheatSetSlowmo( int on )
 // a quarter of the gravity, until the next level (whose world sets its own)
 void IOS_CheatSetLowgrav( int on )
 {
-	if( on && ( !cheat_on || !IOS_CheatPlayer( )))
+	if( on && !IOS_CheatPlayer( ))
 		return;
 
 	if( on && !lowgrav_on )
@@ -334,11 +335,7 @@ void IOS_CheatSet( int on )
 	cheat_on = on;
 
 	if( !on )
-	{
-		IOS_CheatSetSlowmo( 0 );
-		IOS_CheatSetLowgrav( 0 );
 		Cvar_Set( "ios_cheat_ammo", "0" );
-	}
 
 	if( !ent )
 		return;
@@ -354,9 +351,8 @@ void IOS_CheatSet( int on )
 		return;
 	}
 
-	ClearBits( ent->v.flags, FL_GODMODE|FL_NOTARGET );
-	if( ent->v.movetype == MOVETYPE_NOCLIP )
-		ent->v.movetype = MOVETYPE_WALK;
+	// (the menu's switches stay as they are: they're apart from the cheat)
+	ClearBits( ent->v.flags, FL_GODMODE );
 	// as it was before the cheat
 	Cvar_Set( "sv_cheats", saved_sv_cheats[0] ? saved_sv_cheats : "0" );
 	saved_sv_cheats[0] = 0;
@@ -378,17 +374,20 @@ void IOS_CheatSetNoclip( int on )
 {
 	edict_t *ent = IOS_CheatPlayer( );
 
-	if( !ent || !cheat_on )
+	if( !ent )
 		return;
 
-	ent->v.movetype = on ? MOVETYPE_NOCLIP : MOVETYPE_WALK;
+	if( on )
+		ent->v.movetype = MOVETYPE_NOCLIP;
+	else if( ent->v.movetype == MOVETYPE_NOCLIP )
+		ent->v.movetype = MOVETYPE_WALK;
 }
 
 void IOS_CheatSetNotarget( int on )
 {
 	edict_t *ent = IOS_CheatPlayer( );
 
-	if( !ent || !cheat_on )
+	if( !ent )
 		return;
 
 	if( on )
@@ -407,8 +406,18 @@ void IOS_GoToLevel( int i )
 	give_on_load = true;
 }
 
-// once a frame: god mode comes back on each new level; noclip, notarget,
-// slow motion and low gravity end there (as flying ends at each new level in the other ports)
+// the cheat menu's four, all off (the tray's CHEAT hiding the menu's button)
+void IOS_CheatExtrasOff( void )
+{
+	IOS_CheatSetNoclip( 0 );
+	IOS_CheatSetNotarget( 0 );
+	IOS_CheatSetSlowmo( 0 );
+	IOS_CheatSetLowgrav( 0 );
+}
+
+// once a frame: god mode comes back on each new level; the menu's noclip,
+// notarget, slow motion and low gravity end there (as flying ends at each
+// new level in the other ports)
 void IOS_CheatFrame( void )
 {
 	edict_t *ent;
@@ -421,6 +430,16 @@ void IOS_CheatFrame( void )
 		history_back_at = 0;
 	}
 
+	if( cl.servercount != extras_servercount && ( ent = IOS_CheatPlayer( )))
+	{
+		extras_servercount = cl.servercount;
+		ClearBits( ent->v.flags, FL_NOTARGET );
+		if( ent->v.movetype == MOVETYPE_NOCLIP )
+			ent->v.movetype = MOVETYPE_WALK;
+		IOS_CheatSetSlowmo( 0 );
+		lowgrav_on = false; // (the new level's world has set its gravity)
+	}
+
 	if( !cheat_on || cl.servercount == cheat_servercount )
 		return;
 
@@ -431,11 +450,6 @@ void IOS_CheatFrame( void )
 	cheat_servercount = cl.servercount;
 	IOS_ApplyCheat( ent, give_on_load );
 	give_on_load = false;
-	ClearBits( ent->v.flags, FL_NOTARGET );
-	if( ent->v.movetype == MOVETYPE_NOCLIP )
-		ent->v.movetype = MOVETYPE_WALK;
-	IOS_CheatSetSlowmo( 0 );
-	lowgrav_on = false; // (the new level's world has set its gravity)
 }
 
 // typing the word in the console toggles the cheat, as in the other ports
@@ -457,6 +471,7 @@ void IOS_CheatForget( void )
 	saved_sv_cheats[0] = 0;
 	history_back_at = 0;
 	cheat_servercount = -1;
+	extras_servercount = -1;
 	give_on_load = false;
 	chapters_game[0] = 0;
 	num_chapters = 0;
