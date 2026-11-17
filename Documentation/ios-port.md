@@ -76,9 +76,9 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   hides it and switches it off), or type `sithewok` in the console. Hold λ 0.5 s to
   switch it off or on. It gives god mode, all weapons and endless ammo (full
   magazines, no reloading: scripts/ios/patch_hlsdk.sh adds that to each game's
-  code at build time). While it's on, a tap of λ opens the cheat menu (noclip,
-  notarget, slow motion, low gravity; all end at each new level), and the tray
-  shows LEVEL. Single player only.
+  code at build time). A tap of λ, with the cheat on or off, opens the cheat menu
+  (noclip, notarget, slow motion, low gravity; all end at each new level). While
+  the cheat is on, the tray shows LEVEL. Single player only.
 - **LEVEL** (while the cheat is on): tap for the list of the game's chapters, numbered,
   each with its title and its first map, the one being played ticked. The game holds
   still while it's open. Tap a chapter to start it (with the suit and all weapons); the

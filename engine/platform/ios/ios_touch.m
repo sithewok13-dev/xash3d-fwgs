@@ -72,8 +72,8 @@ int IOS_Angle_FellBack( void );
 #define IOSTOUCH_FPS_W 70.0
 #define IOSTOUCH_FPS_H 22.0
 #define IOSTOUCH_FPS_PERIOD 0.5
-// The cheat: CHEAT held this long switches it; tapped while it's on, the
-// cheat menu (noclip, notarget, slow motion, low gravity)
+// The cheat: CHEAT held this long switches it; tapped, with it on or off,
+// the cheat menu (noclip, notarget, slow motion, low gravity)
 #define IOSTOUCH_CHEAT_HOLD 0.5
 #define IOSTOUCH_CHEAT_ROW_H 46.0
 #define IOSTOUCH_CHEAT_MENU_W 230.0
@@ -294,28 +294,8 @@ static CGPoint wheel_center, wheel_ref;
 static CGFloat wheel_r0, wheel_r1;
 static CFTimeInterval level_next, toast_until;
 static int levels_open, level_rows, level_now = -1; // LEVEL's list of chapters
-static int cheatmenu_open, cheat_extras = -1; // the cheat menu; what of it is on
+static int cheatmenu_open; // CHEAT's menu
 
-// what of the cheat menu is on, one bit each, and its words under CHEAT
-static int CheatExtras( void )
-{
-	return ( IOS_CheatNoclip( ) ? 1 : 0 ) | ( IOS_CheatNotarget( ) ? 2 : 0 )
-		| ( IOS_CheatSlowmo( ) ? 4 : 0 ) | ( IOS_CheatLowgrav( ) ? 8 : 0 );
-}
-
-static NSString *CheatExtrasText( int bits )
-{
-	static NSString *const words[4] = { @"NOCLIP", @"NOTARGET", @"SLOW-MO", @"LOW G" };
-	NSMutableArray *on = [NSMutableArray array];
-
-	for( int i = 0; i < 4; i++ )
-	{
-		if( bits & ( 1 << i ))
-			[on addObject:words[i]];
-	}
-
-	return [on componentsJoinedByString:@" · "];
-}
 static int gyro_running, gyro_was_ok, gyro_last_side;
 static CFTimeInterval gyro_turned_round, gyro_last_frame;
 static CMMotionManager *motion;
@@ -551,7 +531,6 @@ static void SaveGyro( void )
 	int fps_label_shown;         // the number it says (-1: none yet)
 	CAShapeLayer *run_chevrons, *run_link;
 	int run_lit;                 // what run_marker shows (-1: not yet set)
-	UILabel *cheat_tag;          // under CHEAT: what of its menu is on
 	UILabel *toast;
 	UIView *flash;
 	UIView *wheel;               // the weapon wheel, made each time it opens
@@ -700,13 +679,6 @@ static CGFloat ButtonAlpha( int i, int on )
 		[self addSubview:v];
 	}
 
-	cheat_tag = [[UILabel alloc] initWithFrame:CGRectMake( 0, 0, 220, 12 )];
-	cheat_tag.textAlignment = NSTextAlignmentCenter;
-	cheat_tag.font = [UIFont boldSystemFontOfSize:9];
-	cheat_tag.textColor = [UIColor colorWithRed:1.0 green:0.85 blue:0.3 alpha:1.0];
-	cheat_tag.hidden = YES;
-	cheat_tag.alpha = ctrl_opacity;
-	[self addSubview:cheat_tag];
 
 	toast = [[UILabel alloc] init];
 	toast.textAlignment = NSTextAlignmentCenter;
@@ -882,9 +854,6 @@ static CGFloat ButtonAlpha( int i, int on )
 	btn_labels[BTN_CAM_FREEZE].text = freeze_on ? @"FREEZE\nON" : @"FREEZE\nOFF";
 	btn_lit[BTN_CHEAT] = cheat_on;
 
-	cheat_extras = CheatExtras( );
-	cheat_tag.text = CheatExtrasText( cheat_extras );
-	cheat_tag.hidden = !cheat_on || !cheat_extras || !btn_shown[BTN_CHEAT] || freezing || seq != SEQ_NONE;
 	if( cheatmenu_open )
 		[self updateCheatMenu];
 
@@ -969,7 +938,6 @@ static CGFloat ButtonAlpha( int i, int on )
 	fps_label.center = CGPointMake(( btn_pos[BTN_QSAVE].x + btn_pos[BTN_QLOAD].x ) * 0.5,
 		top + buttons[BTN_QSAVE].radius + 8 + IOSTOUCH_FPS_H * 0.5 );
 
-	cheat_tag.center = CGPointMake( btn_pos[BTN_CHEAT].x, btn_pos[BTN_CHEAT].y + buttons[BTN_CHEAT].radius + 8 );
 	toast.frame = CGRectMake( 0, 0, MIN( 360, size.width - 2 * ( in.left + 140 )), 28 );
 	toast.center = CGPointMake( size.width * 0.5, top + IOSTOUCH_TRAY_DROP * 2 + 10 );
 
@@ -1084,7 +1052,6 @@ static CGFloat ButtonAlpha( int i, int on )
 		btn_views[i].alpha = ButtonAlpha( i, 0 );
 
 	stick_ring.alpha = stick_knob.alpha = ctrl_opacity;
-	cheat_tag.alpha = ctrl_opacity;
 	run_lit = -1; // redone at its next look
 	run_marker.alpha = IOSTOUCH_IDLE_ALPHA * ctrl_opacity;
 }
@@ -1142,10 +1109,7 @@ static CGFloat ButtonAlpha( int i, int on )
 	cheat_on = on;
 	IOS_CheatSet( on );
 	if( !on )
-	{
 		[self closeLevels];
-		[self closeCheatMenu];
-	}
 	Haptic( 0 );
 	[self showToast:on ? @"Cheat on: god mode, all weapons, endless ammo" : @"Cheat off"];
 	[self updateShown];
@@ -1431,6 +1395,12 @@ static CGFloat ButtonAlpha( int i, int on )
 		[[NSUserDefaults standardUserDefaults] setBool:show_cheat forKey:KEY_SHOW_CHEAT];
 		if( show_cheat != cheat_on )
 			[self setCheat:show_cheat];
+		// hidden: nothing of its menu stays on without its button to end it
+		if( !show_cheat )
+		{
+			[self closeCheatMenu];
+			IOS_CheatExtrasOff( );
+		}
 		[self updateShown];
 		break;
 	case BTN_TRAY_KEYS:
@@ -1950,14 +1920,19 @@ static UIBezierPath *SectorPath( CGPoint c, CGFloat r0, CGFloat r1, CGFloat a0, 
 
 // ---------------------------------------------------------------- CHEAT's menu
 
-// A tap on CHEAT while the cheat is on opens this under it, the game holding
+// A tap on CHEAT opens this under it, the cheat on or not, the game holding
 // still meanwhile: noclip, notarget, slow motion and low gravity, each
 // switched by a tap on its row (gold while it's on), several at once if
 // wanted. A touch anywhere off it closes it. All four end at the next level
-// (ios_cheats.c), and with the cheat.
+// (ios_cheats.c), and when the tray's CHEAT hides the button.
 
 static NSString *const cheat_names[4] = { @"NOCLIP", @"NOTARGET", @"SLOW MOTION", @"LOW GRAVITY" };
 static NSString *const cheat_about[4] = { @"fly through walls", @"enemies ignore you", @"half speed", @"a quarter of the gravity" };
+
+// the rows' labels, found by tag: unlike any row's own (its index, 0 to 3),
+// which viewWithTag: finds first
+#define CHEAT_ROW_NAME 101
+#define CHEAT_ROW_STATE 102
 
 static UIColor *CheatGold( CGFloat a )
 {
@@ -2011,13 +1986,13 @@ static UIColor *CheatGold( CGFloat a )
 
 		name.text = cheat_names[i];
 		name.font = [UIFont systemFontOfSize:15 weight:UIFontWeightHeavy];
-		name.tag = 1;
+		name.tag = CHEAT_ROW_NAME;
 		about.text = cheat_about[i];
 		about.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
 		about.textColor = [UIColor colorWithWhite:1.0 alpha:0.5];
 		state.font = [UIFont systemFontOfSize:13 weight:UIFontWeightHeavy];
 		state.textAlignment = NSTextAlignmentRight;
-		state.tag = 2;
+		state.tag = CHEAT_ROW_STATE;
 		for( UILabel *l in @[ name, about, state ] )
 		{
 			l.userInteractionEnabled = NO;
@@ -2062,8 +2037,8 @@ static int CheatOn( int i )
 	for( int i = 0; i < 4; i++ )
 	{
 		int on = CheatOn( i );
-		UILabel *name = (UILabel *)[cheat_rows[i] viewWithTag:1];
-		UILabel *state = (UILabel *)[cheat_rows[i] viewWithTag:2];
+		UILabel *name = (UILabel *)[cheat_rows[i] viewWithTag:CHEAT_ROW_NAME];
+		UILabel *state = (UILabel *)[cheat_rows[i] viewWithTag:CHEAT_ROW_STATE];
 
 		cheat_rows[i].backgroundColor = on ? CheatGold( 0.22 ) : [UIColor clearColor];
 		name.textColor = on ? CheatGold( 1.0 ) : [UIColor colorWithWhite:1.0 alpha:0.92];
@@ -2095,7 +2070,7 @@ static int CheatOn( int i )
 
 - (void)openCheatMenu
 {
-	if( cheatmenu_open || !cheat_on || !IOS_CheatAllowed( ))
+	if( cheatmenu_open || !IOS_CheatAllowed( ))
 		return;
 
 	[self closeWheel:0];
@@ -2705,10 +2680,11 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 			toast_until = 0;
 			break;
 		case KIND_CHEAT:
-			// a tap (a hold switches the cheat): its menu while it's on,
-			// nothing while it's off
-			if( tap && cheat_on )
+			// a tap (a hold switches the cheat): its menu, the cheat on or not
+			if( tap && IOS_CheatAllowed( ))
 				open_cheats = 1;
+			else if( tap )
+				[self showToast:@"Cheats are for single player games"];
 			break;
 		default:
 			break;
@@ -2768,11 +2744,8 @@ static UIImage *TemplateImage( const unsigned char *rgba, int w, int h )
 	// the list closes itself once the cheat or single player is over
 	if( levels_open && ( !cheat_on || IOS_LevelCount( ) <= 0 ))
 		[self closeLevels];
-	if( cheatmenu_open && ( !cheat_on || !IOS_CheatAllowed( )))
+	if( cheatmenu_open && ( !IOS_CheatAllowed( ) || !btn_shown[BTN_CHEAT] ))
 		[self closeCheatMenu];
-	// noclip and the rest end at each new level: the tag and menu follow
-	if( CheatExtras( ) != cheat_extras )
-		[self updateLabels];
 
 	if( level_counting )
 	{
