@@ -31,7 +31,7 @@ The first public test release. This is a **beta**: it has been played on one iPh
 - **LIGHT**, the flashlight (in Opposing Force, the night vision).
 - **Tilt aiming (gyro)**, off until you switch it on.
 - **The camera:** photos, selfies, bursts, a cinematic burst and Action Freeze, a free camera around a frozen moment.
-- **The cheat** (`sithewok`): god mode and all weapons, noclip, notarget, and LEVEL to jump to any chapter.
+- **The cheat** (`sithewok`): god mode, all weapons and endless ammo, a menu with noclip, notarget, slow motion and low gravity, and LEVEL to jump to any chapter.
 - **Experimental extras, with the least testing:** Half-Life co-op for up to 4 players, Counter-Strike (with your own Steam copy), and Multiplayer Modes (deathmatch variants, with the free Adrenaline Gamer mod's files). See *Playing with friends* below.
 
 ---
@@ -117,8 +117,8 @@ The **camera** button sits in the middle of the top row.
 
 #### The cheat (sithewok)
 
-- **Switch it on:** hold MENU and tap **CHEAT** in the tray, or open the console (CONSOLE) and type `sithewok`. It gives god mode and every weapon, and a gold **λ** button appears in the top row. **Hold λ** for half a second to switch the cheat off (grey) or on again (gold); a tap does nothing.
-- **While it's on:** **hold JUMP** still for half a second for **noclip** (fly through walls; **double-tap JUMP** to land), and **hold USE** still for half a second for **notarget** (enemies ignore you). Small labels under JUMP and USE show them. Both end at each new level; god mode stays on.
+- **Switch it on:** hold MENU and tap **CHEAT** in the tray, or open the console (CONSOLE) and type `sithewok`. It gives god mode, every weapon and endless ammo (magazines stay full, so you never reload), and a gold **λ** button appears in the top row. **Hold λ** for half a second to switch the cheat off (grey) or on again (gold).
+- **While it's on:** **tap λ** for the cheat menu: **noclip** (fly through walls), **notarget** (enemies ignore you), **slow motion** (half speed) and **low gravity**. Tap a row to switch it (gold is on), and tap anywhere else to close the menu; the game holds still while it's open. A small gold label under λ shows which are on. All four end at each new level; god mode and the ammo stay on.
 - **LEVEL**, in the tray: tap it for a list of the game's chapters, numbered, each with its title and first map, the one you're playing ticked. The game holds still while it's open. Tap a chapter to start it (with the suit and all weapons); the X or a tap off the list closes it. Or hold LEVEL and it counts through the chapters: let go to start the one shown. Only chapters whose maps you have are listed.
 - **Single player only.** The cheat and LEVEL do nothing in a game with other players.
 

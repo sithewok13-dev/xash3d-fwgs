@@ -74,9 +74,11 @@ The same touch controls as the OpenJKDF2 (Jedi Knight) and Serious Sam iOS ports
   and its date, UTC; `build dev` for a local build), also on the game picker. TAPS (touch debugging marks) is off the tray: console `ios_taps`.
 - **Cheat:** the tray's CHEAT (shows the λ button and switches the cheat on; again,
   hides it and switches it off), or type `sithewok` in the console. Hold λ 0.5 s to
-  switch it off or on; a tap does nothing. It gives god mode and all weapons. While
-  it's on, hold JUMP still for noclip (double-tap JUMP to land), hold USE still for
-  notarget (both end at each new level), and the tray shows LEVEL. Single player only.
+  switch it off or on. It gives god mode, all weapons and endless ammo (full
+  magazines, no reloading: scripts/ios/patch_hlsdk.sh adds that to each game's
+  code at build time). While it's on, a tap of λ opens the cheat menu (noclip,
+  notarget, slow motion, low gravity; all end at each new level), and the tray
+  shows LEVEL. Single player only.
 - **LEVEL** (while the cheat is on): tap for the list of the game's chapters, numbered,
   each with its title and its first map, the one being played ticked. The game holds
   still while it's open. Tap a chapter to start it (with the suit and all weapons); the
