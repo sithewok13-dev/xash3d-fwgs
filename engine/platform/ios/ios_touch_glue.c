@@ -27,6 +27,11 @@ static const char *ios_touch_cmds[IOSTOUCH_CMD_COUNT] =
 
 static unsigned int ios_touch_held;
 
+// The console is off unless asked for (-console): with it on, a new game
+// loads behind the console's text and the main menu lists it. The touch
+// controls' CONSOLE switches it on for as long as it's open.
+static enum { CONSOLE_OWN, CONSOLE_OPENING, CONSOLE_LENT } ios_console;
+
 static qboolean IOS_TouchInGame( void )
 {
 	return cls.state == ca_active && cls.key_dest == key_game && !cl.background && !Con_Visible( ) && !CL_IOSScreenFaded( );
@@ -54,6 +59,11 @@ static void IOS_TouchRunAction( int action )
 		Key_Event( K_ESCAPE, false );
 		break;
 	case IOSTOUCH_ACT_CONSOLE:
+		if( !host.allow_console )
+		{
+			host.allow_console = true;
+			ios_console = CONSOLE_OPENING;
+		}
 		Cbuf_AddText( "toggleconsole\n" );
 		break;
 	case IOSTOUCH_ACT_SAVEMENU:
@@ -112,6 +122,16 @@ void IOS_TouchFrame( void )
 	}
 
 	IOS_CheatFrame( );
+
+	// CONSOLE's console: off again once it's closed
+	if( ios_console == CONSOLE_OPENING && cls.key_dest == key_console )
+		ios_console = CONSOLE_LENT;
+	else if( ios_console == CONSOLE_LENT && cls.key_dest != key_console )
+	{
+		host.allow_console = false;
+		ios_console = CONSOLE_OWN;
+	}
+
 	IOSTouch_Frame( host.hWnd, ingame, cls.key_dest == key_console );
 
 	// fps_max follows MENU's tray FPS (60 or 120), whatever a config says
